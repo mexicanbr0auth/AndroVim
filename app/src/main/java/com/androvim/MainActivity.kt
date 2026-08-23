@@ -202,11 +202,13 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
 
             val nvim = NvimRuntime.nvimPath(this)
             val cwd = NvimRuntime.homeDir(this).absolutePath
+            val startupLog = File(filesDir, "nvim-startup.log")
+            if (startupLog.exists()) startupLog.delete()
             gotTerminalOutput = false
             session = TerminalSession(
                 nvim,
                 cwd,
-                arrayOf(nvim),
+                arrayOf(nvim, "-V3${startupLog.absolutePath}"),
                 NvimRuntime.buildEnvironment(this),
                 null,
                 this,
@@ -219,17 +221,21 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
             window.decorView.postDelayed({
                 val s = session ?: return@postDelayed
                 if (gotTerminalOutput) return@postDelayed
+                val logTail = try {
+                    startupLog.readText().takeLast(1000)
+                } catch (_: Throwable) {
+                    "(arquivo de log vazio ou inexistente)"
+                }
                 if (s.isRunning) {
                     showOverlay(
                         "O Neovim está rodando mas não desenhou nada.\n\n" +
-                            "binário: ${nvim}\n" +
-                            "runtime existe: ${NvimRuntime.runtimeDir(this).exists()}\n\n" +
+                            "--- nvim -V3 (últimas linhas) ---\n$logTail\n\n" +
                             "• Toque para reiniciar a sessão\n• Segure para compartilhar o log",
                     ) { startSession() }
                 } else {
                     onSessionFinished(s)
                 }
-            }, 8000)
+            }, 12000)
         } catch (t: Throwable) {
             Log.e(LOG_TAG, "falha ao iniciar sessão", t)
             showOverlay(

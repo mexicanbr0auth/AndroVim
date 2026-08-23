@@ -84,11 +84,17 @@ object PkgManager {
     // ---- Index ----------------------------------------------------------------
 
     @Synchronized
-    fun loadIndex(context: Context, forceRefresh: Boolean = false): Map<String, PkgInfo> {
+    fun loadIndex(
+        context: Context,
+        forceRefresh: Boolean = false,
+        progress: ((String) -> Unit)? = null,
+    ): Map<String, PkgInfo> {
         val f = indexFile(context)
         val stale = !f.exists() || System.currentTimeMillis() - f.lastModified() > 24 * 3600_000L
         if (stale || forceRefresh) {
+            progress?.invoke("atualizando catálogo do repositório…")
             val text = httpGet("$REPO/dists/stable/main/binary-${arch()}/Packages")
+            progress?.invoke("catálogo atualizado (${text.length / 1024} KB)")
             f.writeText(text)
         }
         return parsePackages(f.readText())
@@ -131,7 +137,7 @@ object PkgManager {
     fun install(context: Context, roots: List<String>, progress: (String) -> Unit): String {
         ensureLayout(context)
         cacheDirStatic = cacheDir(context) // downloadDeb() runs before extractDeb()
-        val index = loadIndex(context)
+        val index = loadIndex(context, false, progress)
         val resolved = mutableListOf<PkgInfo>()
         val seen = mutableSetOf<String>()
         val queue = ArrayDeque(roots)
@@ -153,7 +159,7 @@ object PkgManager {
         for (info in todo) {
             try {
                 progress("[${done + 1}/${todo.size}] baixando ${info.name} ${info.version}")
-                val deb = downloadDeb(info)
+                val deb = downloadDeb(info, progress)
                 progress("[${done + 1}/${todo.size}] extraindo ${info.name}")
                 val files = extractDeb(deb, context)
                 deb.delete()
@@ -233,21 +239,38 @@ object PkgManager {
         return conn.inputStream.use { it.readBytes().decodeToString() }
     }
 
-    private fun downloadTo(url: String, dest: File) {
+    private fun downloadTo(url: String, dest: File, label: String? = null, progress: ((String) -> Unit)? = null) {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 20000
         conn.readTimeout = 120000
         conn.setRequestProperty("User-Agent", UA)
         if (conn.responseCode != 200) throw Exception("HTTP ${conn.responseCode}: $url")
+        val total = conn.contentLengthLong
+        var copied = 0L
+        var lastReport = 0L
         conn.inputStream.use { input ->
-            FileOutputStream(dest).use { output -> input.copyTo(output) }
+            FileOutputStream(dest).use { output ->
+                val buf = ByteArray(65536)
+                while (true) {
+                    val r = input.read(buf)
+                    if (r < 0) break
+                    output.write(buf, 0, r)
+                    copied += r
+                    if (progress != null && label != null && copied - lastReport > 262144) {
+                        lastReport = copied
+                        val pct = if (total > 0) " ${copied * 100 / total}%" else " ${(copied / 1024)} KB"
+                        progress("$label$pct")
+                    }
+                }
+            }
         }
+        if (total > 0 && copied != total) throw Exception("download incompleto ($copied/$total bytes): $url")
     }
 
-    private fun downloadDeb(info: PkgInfo): File {
+    private fun downloadDeb(info: PkgInfo, progress: ((String) -> Unit)? = null): File {
         val dest = File(cacheDirStatic ?: throw IllegalStateException(), info.filename.substringAfterLast('/'))
         if (dest.exists() && dest.length() == info.size) return dest
-        downloadTo("$REPO/${info.filename}", dest)
+        downloadTo("$REPO/${info.filename}", dest, "${info.name} ${info.size / 1024}KB", progress)
         if (info.sha256.isNotEmpty()) {
             val digest = MessageDigest.getInstance("SHA-256").digest(dest.readBytes())
             val hex = digest.joinToString("") { "%02x".format(it) }
