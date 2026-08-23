@@ -66,7 +66,7 @@ class PluginsActivity : Activity() {
         }
         manualCard.addView(Ui.button(this, "Clonar e instalar") {
             val value = input.text.toString().trim()
-            if (value.isEmpty() || !busy.compareAndSet(false, true)) return@Ui.button
+            if (value.isEmpty() || !busy.compareAndSet(false, true)) return@button
             manualStatus.visibility = View.VISIBLE
             manualStatus.setTextColor(Ui.MUTED)
             manualStatus.text = "Clonando…"

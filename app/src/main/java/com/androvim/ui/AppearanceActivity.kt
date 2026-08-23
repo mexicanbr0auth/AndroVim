@@ -8,7 +8,7 @@ import android.view.View
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.SeekBar
-import com.androvim.data.ColorSchemes
+import com.androvim.data.ColorScheme
 import com.androvim.data.Prefs
 import com.androvim.ui.Ui.dp
 
@@ -65,7 +65,7 @@ class AppearanceActivity : Activity() {
 
         // ---- esquema de cores ----------------------------------------------------
         content.addView(Ui.label(this, "Esquema de cores", 15f, bold = true))
-        for (scheme in ColorSchemes.ALL) {
+        for (scheme in ColorScheme.ALL) {
             content.addView(schemeCard(scheme.id, scheme.label, scheme.palette))
         }
 

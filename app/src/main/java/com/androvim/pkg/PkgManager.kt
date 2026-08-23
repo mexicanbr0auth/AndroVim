@@ -166,7 +166,7 @@ object PkgManager {
             }
         }
         saveRegistry(context, already)
-        markExecutableTree(File(binDir(context)))
+        markExecutableTree(binDir(context))
         markExecutableTree(File(prefix(context), "libexec"))
         progress("Concluído ✔")
         return "${todo.size} pacote(s) instalado(s)"

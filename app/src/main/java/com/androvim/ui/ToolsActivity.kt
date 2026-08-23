@@ -57,14 +57,14 @@ class ToolsActivity : Activity() {
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
 
         val installBtn = Ui.button(this, if (installed) "[instalado]" else "Instalar") {
-            if (installed || !busy.compareAndSet(false, true)) return@Ui.button
+            if (installed || !busy.compareAndSet(false, true)) return@button
             runInstall(tool.pkgName, statusLine) { refresh() }
         }
         btnRow.addView(installBtn)
 
         if (installed) {
             val removeBtn = Ui.button(this, "Remover", Ui.DANGER) {
-                if (!busy.compareAndSet(false, true)) return@Ui.button
+                if (!busy.compareAndSet(false, true)) return@button
                 statusLine.visibility = View.VISIBLE
                 statusLine.text = "Removendo…"
                 Thread {

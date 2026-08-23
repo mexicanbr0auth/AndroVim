@@ -25,12 +25,13 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.drawerlayout.widget.DrawerLayout
-import com.androvim.data.ColorSchemes
+import com.androvim.data.ColorScheme
 import com.androvim.data.Prefs
 import com.androvim.ui.AppearanceActivity
 import com.androvim.ui.PluginsActivity
 import com.androvim.ui.ProjectsActivity
 import com.androvim.ui.ToolsActivity
+import com.androvim.ui.Ui
 import com.termux.terminal.TerminalEmulator
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -388,7 +389,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
 
     private fun applyColorScheme() {
         val emulator = terminalView.mEmulator ?: return
-        ColorSchemes.applyTo(emulator, ColorSchemes.byId(prefs.getString(Prefs.COLOR_SCHEME, "default") ?: "default"))
+        ColorScheme.applyTo(emulator, ColorScheme.byId(prefs.getString(Prefs.COLOR_SCHEME, "default") ?: "default"))
         terminalView.onScreenUpdated()
     }
 
