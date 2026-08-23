@@ -89,11 +89,17 @@ SRC="$STAGE/root/data/data/com.termux/files/usr"
 [ -d "$SRC" ] || SRC="$STAGE/root/usr"
 [ -d "$SRC" ] || { echo "unexpected tar layout"; find "$STAGE/root" -maxdepth 4 | head; exit 1; }
 
-rm -rf "$ASSETS/bootstrap.tar.gz" "$ASSETS/bootstrap.version"
-tar -czf "$ASSETS/bootstrap.tar.gz" -C "$SRC" .
-date -u +"%Y%m%d%H%M%S-seeds-${SEEDS[*]}" | tr ' ' '+' > "$ASSETS/bootstrap.version"
+rm -rf "$ASSETS/aptdist.tar.gz" "$ASSETS/aptdist.ver"
+tar -czf "$ASSETS/aptdist.tar.gz" -C "$SRC" .
+date -u +"%Y%m%d%H%M%S-seeds-${SEEDS[*]}" | tr ' ' '+' > "$ASSETS/aptdist.ver"
+
+# sanity: the tar must contain the essential binaries
+for want in bin/apt bin/dpkg bin/busybox; do
+  tar -tzf "$ASSETS/aptdist.tar.gz" | grep -qx "$want" || {
+    echo "FATAL: $want missing from aptdist.tar.gz"; exit 1;
+  }
+done
 
 echo
 echo "bootstrap staged:"
-du -sh "$ASSETS/bootstrap.tar.gz"
-find "$SRC/bin" -maxdepth 1 -name "apt*" -o -maxdepth 1 -name "dpkg*" | head
+du -sh "$ASSETS/aptdist.tar.gz"

@@ -71,7 +71,7 @@ object NvimRuntime {
      */
     private fun extractBootstrap(context: Context) {
         val version = try {
-            context.assets.open("bootstrap.version").use {
+            context.assets.open("aptdist.ver").use {
                 it.readBytes().decodeToString().trim()
             }
         } catch (_: Exception) {
@@ -82,9 +82,11 @@ object NvimRuntime {
             ensureAptLayout(context)
             return
         }
-        Log.i(TAG, "extraindo bootstrap apt/dpkg…")
-        val prefix = prefixDir(context)
-        context.assets.open("bootstrap.tar.gz").use { raw ->
+        // apt is an optional bonus: any failure here must never block startup
+        try {
+            Log.i(TAG, "extraindo bootstrap apt/dpkg…")
+            val prefix = prefixDir(context)
+            context.assets.open("aptdist.tar.gz").use { raw ->
             java.util.zip.GZIPInputStream(raw).use { gz ->
                 TarReader(gz).use { reader ->
                     var current = reader.next()
@@ -141,6 +143,9 @@ object NvimRuntime {
             if (dir.isDirectory) dir.walkTopDown().forEach {
                 if (it.isFile) runCatching { Os.chmod(it.absolutePath, 509) } // 0755
             }
+        }
+        } catch (t: Throwable) {
+            Log.w(TAG, "bootstrap apt indisponível (segue sem ele): $t")
         }
         ensureAptLayout(context)
     }
