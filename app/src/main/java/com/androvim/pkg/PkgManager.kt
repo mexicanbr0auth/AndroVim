@@ -77,11 +77,27 @@ object PkgManager {
         registryFile(context).writeText(root.toString())
     }
 
+    /** Packages embedded in the APK bootstrap (python, node, git, apt…). */
+    fun bootstrapVersions(context: Context): Map<String, String> {
+        val f = File(prefix(context), "etc/androvim-bootstrap.json")
+        if (!f.exists()) return emptyMap()
+        return runCatching {
+            val obj = JSONObject(f.readText())
+            val out = mutableMapOf<String, String>()
+            for (key in obj.keys()) out[key] = obj.optString(key)
+            out
+        }.getOrDefault(emptyMap())
+    }
+
+    fun bootstrapVersion(context: Context, name: String): String? =
+        bootstrapVersions(context)[name]
+
     fun isInstalled(context: Context, name: String): Boolean =
-        installedMap(context).containsKey(name)
+        installedMap(context).containsKey(name) || bootstrapVersion(context, name) != null
 
     fun installedVersion(context: Context, name: String): String? =
         installedMap(context)[name]?.optString("version")
+            ?: bootstrapVersion(context, name)
 
     // ---- Index ----------------------------------------------------------------
 

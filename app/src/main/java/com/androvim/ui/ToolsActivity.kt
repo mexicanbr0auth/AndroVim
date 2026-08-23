@@ -238,6 +238,18 @@ class ToolsActivity : Activity() {
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12f)
             visibility = View.GONE
         }
+        val builtinVer = PkgManager.bootstrapVersion(this, tool.pkgName)
+        if (builtinVer != null) {
+            // embedded in the APK: nothing to install or remove
+            card.addView(Ui.button(this, "[embutido v$builtinVer]").apply {
+                isEnabled = false
+                alpha = 0.55f
+            })
+            card.addView(Ui.mutedLabel(this, "Já vem dentro do app — pronto para usar.").also {
+                it.setPadding(0, dp(4, this), 0, 0)
+            })
+            return card
+        }
         val installed = PkgManager.isInstalled(this, tool.pkgName)
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
 

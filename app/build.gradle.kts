@@ -15,8 +15,8 @@ android {
         // targetSdk < 29 keeps exec() allowed on app-writable storage, which is
         // what lets runtime-installed tools (git, python, node...) run.
         targetSdk = 28
-        versionCode = 13
-        versionName = "0.4.0"
+        versionCode = 14
+        versionName = "0.4.1"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")

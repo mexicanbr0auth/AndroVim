@@ -10,7 +10,7 @@ trap 'rm -rf "$STAGE"' EXIT
 
 REPO="${REPO:-https://packages.termux.dev/apt/termux-main}"
 ARCH="${BOOTSTRAP_ARCH:-aarch64}"
-SEEDS=(apt dpkg termux-keyring ca-certificates busybox)
+SEEDS=(apt dpkg termux-keyring ca-certificates busybox python nodejs-lts git)
 
 command -v python3 >/dev/null || { echo "python3 required"; exit 1; }
 command -v zstd >/dev/null || { echo "zstd required"; exit 1; }
@@ -50,7 +50,7 @@ while queue:
     queue.extend(deps)
 
 for p in sorted(seen):
-    print(index[p]["Filename"])
+    print(index[p]["Filename"] + "|" + p + "|" + index[p].get("Version", "?"))
 PY
 )
 
@@ -58,14 +58,18 @@ PY
 echo "== bootstrap packages =="; echo "$FILES"
 
 DL="$STAGE/debs"; mkdir -p "$DL" "$STAGE/root"
-n=0
-for fn in $FILES; do
-  n=$((n+1))
+mkdir -p "$STAGE/root/data/data/com.termux/files/usr/etc"
+MANIFEST="$STAGE/root/data/data/com.termux/files/usr/etc/androvim-bootstrap.json"
+
+JSON="{"
+first=1
+while IFS='|' read -r fn pname ver; do
+  [ -n "$fn" ] || continue
   base=$(basename "$fn")
   curl -fsSL --retry 3 "$REPO/$fn" -o "$DL/$base"
   # unwrap the ar archive member data.tar.*
   python3 - "$DL/$base" "$STAGE" <<'PY'
-import sys, subprocess
+import sys
 data = open(sys.argv[1], "rb").read()
 assert data[:8] == b"!<arch>\n", "not a deb"
 off = 8
@@ -82,7 +86,13 @@ PY
   tar -xf "$STAGE/data.tar.bin" -C "$STAGE/root" 2>/dev/null || \
     tar -I zstd -xf "$STAGE/data.tar.bin" -C "$STAGE/root"
   rm -f "$STAGE/data.tar.bin"
-done
+  [ $first -eq 0 ] && JSON="$JSON,"
+  JSON="$JSON\"$pname\":\"$ver\""
+  first=0
+done < <(printf '%s\n' "$FILES")
+JSON="$JSON}"
+echo "$JSON" > "$MANIFEST"
+echo "== embedded manifest =="; cat "$MANIFEST"
 
 # flatten termux prefix layout: data/data/com.termux/files/usr/<rest> -> <rest>
 SRC="$STAGE/root/data/data/com.termux/files/usr"
@@ -97,7 +107,7 @@ date -u +"%Y%m%d%H%M%S-seeds-${SEEDS[*]}" | tr ' ' '+' > "$ASSETS/aptdist.ver"
 # (capture listing first: grep -q would SIGPIPE tar under set -o pipefail)
 LISTING="$STAGE/listing.txt"
 tar -tzf "$ASSETS/aptdist.tar.gz" > "$LISTING"
-for want in 'bin/apt' 'bin/dpkg' 'bin/busybox'; do
+for want in 'bin/apt' 'bin/dpkg' 'bin/busybox' 'bin/python3' 'bin/node' 'bin/git'; do
   grep -qE "^\.?/?$want\$" "$LISTING" || {
     echo "FATAL: $want missing from aptdist.tar.gz"; exit 1;
   }
