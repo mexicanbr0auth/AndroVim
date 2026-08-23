@@ -241,7 +241,7 @@ class ToolsActivity : Activity() {
         val builtinVer = PkgManager.bootstrapVersion(this, tool.pkgName)
         if (builtinVer != null) {
             // embedded in the APK: nothing to install or remove
-            card.addView(Ui.button(this, "[embutido v$builtinVer]").apply {
+            card.addView(Ui.button(this, "[embutido v$builtinVer]", onClick = {}).apply {
                 isEnabled = false
                 alpha = 0.55f
             })
