@@ -148,28 +148,36 @@ object PkgManager {
         progress("Resolvido: ${resolved.size} pacotes, ${todo.size} novos")
 
         val newFiles = mutableMapOf<String, MutableList<String>>()
-        for ((i, info) in todo.withIndex()) {
-            progress("Baixando ${info.name} ${info.version} (${i + 1}/${todo.size})")
-            val deb = downloadDeb(info)
-            progress("Extraindo ${info.name}")
-            val files = extractDeb(deb, context)
-            deb.delete()
-            newFiles[info.name] = files.toMutableList()
-        }
-
-        // register everything that was newly installed
-        for (info in resolved) {
-            if (!already.containsKey(info.name)) {
+        val failures = mutableListOf<String>()
+        var done = 0
+        for (info in todo) {
+            try {
+                progress("[${done + 1}/${todo.size}] baixando ${info.name} ${info.version}")
+                val deb = downloadDeb(info)
+                progress("[${done + 1}/${todo.size}] extraindo ${info.name}")
+                val files = extractDeb(deb, context)
+                deb.delete()
+                newFiles[info.name] = files.toMutableList()
+                // persist immediately so progress survives process death
                 already[info.name] = JSONObject()
                     .put("version", info.version)
-                    .put("files", JSONArray(newFiles[info.name] ?: mutableListOf<String>()))
+                    .put("files", JSONArray(files))
+                saveRegistry(context, already)
+                done++
+            } catch (e: Exception) {
+                failures += "${info.name}: ${e.message}"
             }
         }
-        saveRegistry(context, already)
+
         markExecutableTree(binDir(context))
         markExecutableTree(File(prefix(context), "libexec"))
+        if (failures.isNotEmpty()) {
+            throw Exception(
+                "${done}/${todo.size} pacote(s) instalado(s). Falhas: " + failures.joinToString(" | "),
+            )
+        }
         progress("Concluído ✔")
-        return "${todo.size} pacote(s) instalado(s)"
+        return "$done pacote(s) instalado(s)"
     }
 
     /** Alias kept for readability at call sites. */

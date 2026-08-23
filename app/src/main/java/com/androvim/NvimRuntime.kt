@@ -183,7 +183,6 @@ object NvimRuntime {
             "PREFIX=$prefix",
             "LD_LIBRARY_PATH=$nativeLib:$prefix/lib",
             "GIT_EXEC_PATH=$prefix/libexec/git-core",
-            "PYTHONHOME=$prefix",
             "ANDROVIM_PASTE_FILE=${pasteFile(context).absolutePath}",
         )
         luajitLibPath(context)?.let { env.add("LD_PRELOAD=$it") }

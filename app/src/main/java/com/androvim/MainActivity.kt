@@ -63,6 +63,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     private var session: TerminalSession? = null
     private var ctrlHeld = false
     private var overlayTap: (() -> Unit)? = null
+    private var gotTerminalOutput = false
 
     private val clipboardManager: ClipboardManager
         get() = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -84,7 +85,8 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
             } ?: continue
             if (device.isVirtual) continue
             val s = device.sources
-            val keyboard = s and InputDevice.SOURCE_KEYBOARD != 0
+            val keyboard = s and InputDevice.SOURCE_KEYBOARD != 0 &&
+                device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
             val pointing = s and (InputDevice.SOURCE_MOUSE or InputDevice.SOURCE_TRACKBALL) != 0
             if (keyboard || pointing) return true
         }
@@ -200,6 +202,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
 
             val nvim = NvimRuntime.nvimPath(this)
             val cwd = NvimRuntime.homeDir(this).absolutePath
+            gotTerminalOutput = false
             session = TerminalSession(
                 nvim,
                 cwd,
@@ -210,6 +213,23 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
             )
             terminalView.attachSession(session!!)
             applyColorScheme()
+            terminalView.requestFocus()
+
+            // watchdog: if the TUI never draws anything, surface diagnostics
+            window.decorView.postDelayed({
+                val s = session ?: return@postDelayed
+                if (gotTerminalOutput) return@postDelayed
+                if (s.isRunning) {
+                    showOverlay(
+                        "O Neovim está rodando mas não desenhou nada.\n\n" +
+                            "binário: ${nvim}\n" +
+                            "runtime existe: ${NvimRuntime.runtimeDir(this).exists()}\n\n" +
+                            "• Toque para reiniciar a sessão\n• Segure para compartilhar o log",
+                    ) { startSession() }
+                } else {
+                    onSessionFinished(s)
+                }
+            }, 8000)
         } catch (t: Throwable) {
             Log.e(LOG_TAG, "falha ao iniciar sessão", t)
             showOverlay(
@@ -582,6 +602,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     // ---- TerminalSessionClient ----------------------------------------------------------
 
     override fun onTextChanged(changedSession: TerminalSession?) {
+        gotTerminalOutput = true
         terminalView.onScreenUpdated()
     }
 

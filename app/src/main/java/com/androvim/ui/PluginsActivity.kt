@@ -19,6 +19,7 @@ class PluginsActivity : Activity() {
 
     private lateinit var content: LinearLayout
     private lateinit var gitBanner: LinearLayout
+    private lateinit var manualCard: LinearLayout
     private val busy = AtomicBoolean(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,7 +46,8 @@ class PluginsActivity : Activity() {
         updateGitBanner()
 
         // ---- instalação manual ---------------------------------------------------
-        val manualCard = Ui.card(this)
+        val card = Ui.card(this)
+        manualCard = card
         manualCard.addView(Ui.label(this, "Instalar por URL", 14f, bold = true))
         manualCard.addView(Ui.mutedLabel(this, "\"usuario/repo\" do GitHub ou URL https completa"))
         val input = EditText(this).apply {
@@ -121,13 +123,14 @@ class PluginsActivity : Activity() {
     }
 
     private fun refresh() {
-        content.removeViews(content.childCount - catalogCount(), catalogCount())
+        if (!this::manualCard.isInitialized) return
+        // remove only the catalog cards (everything after the fixed header cards)
+        val fixedEnd = content.indexOfChild(manualCard) + 1
+        while (content.childCount > fixedEnd) content.removeViewAt(fixedEnd)
         for (plugin in PluginCatalog.ALL) {
             content.addView(pluginCard(plugin))
         }
     }
-
-    private fun catalogCount(): Int = PluginCatalog.ALL.size
 
     private fun pluginCard(plugin: NvimPlugin): View {
         val card = Ui.card(this)
