@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -20,6 +24,30 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.AppearanceActivity"
+            android:label="@string/menu_appearance"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden" />
+
+        <activity
+            android:name=".ui.PluginsActivity"
+            android:label="@string/menu_plugins"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden" />
+
+        <activity
+            android:name=".ui.ToolsActivity"
+            android:label="@string/menu_tools"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden" />
+
+        <activity
+            android:name=".ui.ProjectsActivity"
+            android:label="@string/menu_projects"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden" />
     </application>
 
 </manifest>

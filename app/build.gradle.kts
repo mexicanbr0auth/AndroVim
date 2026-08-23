@@ -10,13 +10,19 @@ android {
     defaultConfig {
         applicationId = "com.androvim"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 2
-        versionName = "0.1.1"
+        // targetSdk < 29 keeps exec() allowed on app-writable storage, which is
+        // what lets runtime-installed tools (git, python, node...) run.
+        targetSdk = 28
+        versionCode = 3
+        versionName = "0.2.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
+
+        val nvimVersionFile = file("src/main/assets/runtime/androvim-version")
+        val nvimVersion = if (nvimVersionFile.exists()) nvimVersionFile.readText().trim() else "dev"
+        buildConfigField("String", "NVIM_VERSION", "\"$nvimVersion\"")
     }
 
     buildFeatures {
@@ -59,4 +65,6 @@ android {
 dependencies {
     implementation("com.github.termux.termux-app:terminal-view:v0.118.3")
     implementation("com.github.termux.termux-app:terminal-emulator:v0.118.3")
+    implementation("androidx.drawerlayout:drawerlayout:1.2.0")
+    implementation("org.tukaani:xz:1.9")
 }

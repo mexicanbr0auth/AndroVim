@@ -4,4 +4,15 @@
     <string name="clipboard_synced">Área de transferência sincronizada — use "+p para colar</string>
     <string name="clipboard_empty">Área de transferência vazia</string>
     <string name="session_finished">O Neovim terminou (código %1$d).\n\nToque para reiniciar.</string>
+
+    <string name="menu_terminal">Terminal</string>
+    <string name="menu_appearance">Aparência</string>
+    <string name="menu_plugins">Plugins Neovim</string>
+    <string name="menu_tools">Ferramentas &amp; Linguagens</string>
+    <string name="menu_projects">Projetos</string>
+
+    <string name="appearance_title">Aparência</string>
+    <string name="plugins_title">Plugins Neovim</string>
+    <string name="tools_title">Ferramentas &amp; Linguagens</string>
+    <string name="projects_title">Projetos</string>
 </resources>

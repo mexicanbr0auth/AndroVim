@@ -7,10 +7,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Typeface
+import android.hardware.input.InputManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -21,6 +24,13 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.drawerlayout.widget.DrawerLayout
+import com.androvim.data.ColorSchemes
+import com.androvim.data.Prefs
+import com.androvim.ui.AppearanceActivity
+import com.androvim.ui.PluginsActivity
+import com.androvim.ui.ProjectsActivity
+import com.androvim.ui.ToolsActivity
 import com.termux.terminal.TerminalEmulator
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -33,7 +43,17 @@ import java.util.Locale
 
 class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
 
-    private lateinit var rootLayout: FrameLayout
+    companion object {
+        private const val LOG_TAG = "AndroVim"
+        private const val MIN_TEXT_SIZE = 6
+        private const val MAX_TEXT_SIZE = 32
+        private val BG_COLOR = 0xFF10141A.toInt()
+        private const val REQ_PROJECTS = 42
+    }
+
+    private lateinit var drawerLayout: DrawerLayout
+    private lateinit var mainColumn: LinearLayout
+    private lateinit var headerBar: LinearLayout
     private lateinit var terminalView: TerminalView
     private lateinit var extraKeys: ExtraKeysBar
     private lateinit var overlay: TextView
@@ -46,12 +66,56 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     private val clipboardManager: ClipboardManager
         get() = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
+    // ---- hardware keyboard / mouse detection ---------------------------------
+
+    private val inputListener = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) = updateExtraKeysVisibility()
+        override fun onInputDeviceRemoved(deviceId: Int) = updateExtraKeysVisibility()
+        override fun onInputDeviceChanged(deviceId: Int) = updateExtraKeysVisibility()
+    }
+
+    private fun hasHardwareInput(): Boolean {
+        for (id in InputDevice.getDeviceIds()) {
+            val device = try {
+                InputDevice.getDevice(id)
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            if (device.isVirtual) continue
+            val s = device.sources
+            val keyboard = s and InputDevice.SOURCE_KEYBOARD != 0
+            val pointing = s and (InputDevice.SOURCE_MOUSE or InputDevice.SOURCE_TRACKBALL) != 0
+            if (keyboard || pointing) return true
+        }
+        return false
+    }
+
+    /** extra keys mode: auto hides when a physical keyboard/mouse is present */
+    private fun updateExtraKeysVisibility() {
+        if (!this::extraKeys.isInitialized) return
+        val mode = prefs.getString(Prefs.EXTRA_KEYS_MODE, Prefs.EXTRA_KEYS_AUTO)
+        val visible = when (mode) {
+            Prefs.EXTRA_KEYS_SHOW -> true
+            Prefs.EXTRA_KEYS_HIDE -> false
+            else -> !hasHardwareInput()
+        }
+        extraKeys.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    // ---- lifecycle -------------------------------------------------------------
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installCrashHandler()
-        prefs = getPreferences(Context.MODE_PRIVATE)
+        prefs = getSharedPreferences(Prefs.FILE, MODE_PRIVATE)
+        migrateLegacyPrefs()
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         buildUi()
+
+        val im = getSystemService(Context.INPUT_SERVICE) as InputManager
+        im.registerInputDeviceListener(inputListener, null)
+
+        applyAppearance()
 
         val lastCrash = readLastCrash()
         if (lastCrash != null) {
@@ -68,7 +132,39 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
         }
     }
 
-    // ---- Startup -------------------------------------------------------------
+    /** v0.1.x kept text_size in the activity-local prefs file. */
+    private fun migrateLegacyPrefs() {
+        if (prefs.contains(Prefs.TEXT_SIZE)) return
+        val legacy = getPreferences(MODE_PRIVATE).getInt("text_size", -1)
+        if (legacy > 0) {
+            prefs.edit().putInt(Prefs.TEXT_SIZE, legacy.coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE)).apply()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applyAppearance()
+        updateExtraKeysVisibility()
+        syncClipboardSafe()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        val im = getSystemService(Context.INPUT_SERVICE) as InputManager
+        im.unregisterInputDeviceListener(inputListener)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (this::drawerLayout.isInitialized && drawerLayout.isDrawerOpen(Gravity.START)) {
+            drawerLayout.closeDrawer(Gravity.START)
+        } else {
+            // Keep the Neovim process alive; just move the app to the background.
+            moveTaskToBack(true)
+        }
+    }
+
+    // ---- Startup ---------------------------------------------------------------
 
     private fun beginStartup() {
         Log.i(LOG_TAG, "preparando runtime do Neovim…")
@@ -112,6 +208,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
                 this,
             )
             terminalView.attachSession(session!!)
+            applyColorScheme()
         } catch (t: Throwable) {
             Log.e(LOG_TAG, "falha ao iniciar sessão", t)
             showOverlay(
@@ -121,19 +218,38 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
         }
     }
 
-    // ---- UI ------------------------------------------------------------------
+    // ---- UI ----------------------------------------------------------------------
+
+    private fun dp(v: Int): Int =
+        (v * resources.displayMetrics.density).toInt()
 
     @SuppressLint("SetTextI18n")
     private fun buildUi() {
-        rootLayout = FrameLayout(this).apply { setBackgroundColor(BG_COLOR) }
+        drawerLayout = DrawerLayout(this)
 
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            )
+        mainColumn = LinearLayout(this).apply { setBackgroundColor(BG_COLOR) }
+
+        headerBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            setBackgroundColor(0xFF161B22.toInt())
         }
+        val burger = TextView(this).apply {
+            text = "\u2630"
+            textSize = 18f
+            setTextColor(0xFFD5DAE0.toInt())
+            setPadding(0, dp(4), dp(16), dp(4))
+        }
+        headerBar.addView(burger)
+        headerBar.addView(TextView(this).apply {
+            text = getString(R.string.app_name)
+            textSize = 15f
+            setTextColor(0xFFD5DAE0.toInt())
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        burger.setOnClickListener { drawerLayout.openDrawer(Gravity.START) }
+        headerBar.setOnClickListener { drawerLayout.openDrawer(Gravity.START) }
 
         terminalView = TerminalView(this, null).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -153,10 +269,6 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
             }
         })
 
-        column.addView(terminalView)
-        column.addView(extraKeys)
-        rootLayout.addView(column)
-
         overlay = TextView(this).apply {
             gravity = Gravity.CENTER
             textSize = 13f
@@ -171,7 +283,11 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
                 true
             }
         }
-        rootLayout.addView(
+
+        mainColumn.addView(headerBar)
+        mainColumn.addView(terminalView)
+        mainColumn.addView(extraKeys)
+        mainColumn.addView(
             overlay,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -179,10 +295,114 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
             ),
         )
 
-        setContentView(rootLayout)
+        drawerLayout.addView(
+            mainColumn,
+            DrawerLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        drawerLayout.addView(buildDrawerMenu(), DrawerLayout.LayoutParams(dp(280), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
 
-        terminalView.setTextSize(prefs.getInt(KEY_TEXT_SIZE, DEFAULT_TEXT_SIZE))
+        setContentView(drawerLayout)
+
         terminalView.setTerminalViewClient(this)
+    }
+
+    @SuppressLint("SetTextI18n")
+    private fun buildDrawerMenu(): View {
+        val menu = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xFF141A21.toInt())
+            setPadding(dp(8), dp(12), dp(8), dp(12))
+        }
+
+        menu.addView(TextView(this).apply {
+            text = getString(R.string.app_name)
+            textSize = 17f
+            setTextColor(0xFFD5DAE0.toInt())
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(10), 0, dp(10), dp(14))
+        })
+
+        fun item(label: String, subtitle: String, onClick: () -> Unit) {
+            val row = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(10), dp(9), dp(10), dp(9))
+                background = Ui.rounded(this@MainActivity, 0x00000000, 8f)
+                setOnClickListener(onClick)
+            }
+            row.addView(TextView(this@MainActivity).apply {
+                text = label
+                textSize = 15f
+                setTextColor(0xFFD5DAE0.toInt())
+            })
+            row.addView(TextView(this@MainActivity).apply {
+                text = subtitle
+                textSize = 11f
+                setTextColor(0xFF8A97A5.toInt())
+            })
+            menu.addView(row)
+        }
+
+        item(getString(R.string.menu_terminal), "voltar ao editor") {
+            drawerLayout.closeDrawers()
+        }
+        item(getString(R.string.menu_appearance), getString(R.string.appearance_title)) {
+            drawerLayout.closeDrawers()
+            startActivity(Intent(this@MainActivity, AppearanceActivity::class.java))
+        }
+        item(getString(R.string.menu_plugins), getString(R.string.plugins_title)) {
+            drawerLayout.closeDrawers()
+            startActivity(Intent(this@MainActivity, PluginsActivity::class.java))
+        }
+        item(getString(R.string.menu_tools), getString(R.string.tools_title)) {
+            drawerLayout.closeDrawers()
+            startActivity(Intent(this@MainActivity, ToolsActivity::class.java))
+        }
+        item(getString(R.string.menu_projects), getString(R.string.projects_title)) {
+            drawerLayout.closeDrawers()
+            startActivityForResult(Intent(this@MainActivity, ProjectsActivity::class.java), REQ_PROJECTS)
+        }
+
+        menu.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
+        menu.addView(TextView(this).apply {
+            text = "v${BuildConfig.VERSION_NAME} • nvim ${BuildConfig.NVIM_VERSION}"
+            textSize = 11f
+            setTextColor(0xFF5A6672.toInt())
+            setPadding(dp(10), 0, dp(10), dp(2))
+        })
+        return menu
+    }
+
+    // ---- appearance ------------------------------------------------------------------
+
+    private fun applyAppearance() {
+        if (!this::terminalView.isInitialized) return
+        terminalView.setTextSize(prefs.getInt(Prefs.TEXT_SIZE, 12).coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE))
+        val family = prefs.getString(Prefs.FONT_FAMILY, "monospace") ?: "monospace"
+        terminalView.setTypeface(Typeface.create(family, Typeface.NORMAL))
+        terminalView.keepScreenOn = prefs.getBoolean(Prefs.KEEP_SCREEN_ON, false)
+        applyColorScheme()
+    }
+
+    private fun applyColorScheme() {
+        val emulator = terminalView.mEmulator ?: return
+        ColorSchemes.applyTo(emulator, ColorSchemes.byId(prefs.getString(Prefs.COLOR_SCHEME, "default") ?: "default"))
+        terminalView.onScreenUpdated()
+    }
+
+    // ---- project handoff -----------------------------------------------------------
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_PROJECTS && resultCode == RESULT_OK) {
+            val path = data?.getStringExtra(ProjectsActivity.EXTRA_CD_PATH) ?: return
+            val escaped = path.replace(" ", "\\ ")
+            writeToPty("\u001B") // leave any mode we're in
+            writeToPty(":cd $escaped\r")
+            toast("nvim :cd ${File(path).name}")
+        }
     }
 
     private fun showOverlay(message: String, onTap: () -> Unit) {
@@ -197,9 +417,6 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
         overlayTap = null
         overlay.visibility = View.GONE
     }
-
-    private fun dp(v: Int): Int =
-        (v * resources.displayMetrics.density).toInt()
 
     private fun writeToPty(data: String) {
         val bytes = data.toByteArray(Charsets.UTF_8)
@@ -230,18 +447,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
         return super.dispatchKeyEvent(event)
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        // Keep the Neovim process alive; just move the app to the background.
-        moveTaskToBack(true)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        syncClipboardSafe()
-    }
-
-    // ---- Clipboard -----------------------------------------------------------
+    // ---- Clipboard -------------------------------------------------------------------
 
     private fun currentClipText(): String? = try {
         clipboardManager.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
@@ -256,7 +462,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
             false
         }
 
-    // ---- Crash reporting -----------------------------------------------------
+    // ---- Crash reporting ---------------------------------------------------------------
 
     private fun crashFile(): File =
         File(getExternalFilesDir(null) ?: filesDir, "crash.txt")
@@ -322,14 +528,14 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
         }
     }
 
-    // ---- TerminalViewClient --------------------------------------------------
+    // ---- TerminalViewClient ------------------------------------------------------------
 
     override fun onScale(scale: Float): Float {
-        val current = prefs.getInt(KEY_TEXT_SIZE, DEFAULT_TEXT_SIZE)
+        val current = prefs.getInt(Prefs.TEXT_SIZE, 12)
         val next = (current * scale).toInt().coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE)
         if (next != current) {
             terminalView.setTextSize(next)
-            prefs.edit().putInt(KEY_TEXT_SIZE, next).apply()
+            prefs.edit().putInt(Prefs.TEXT_SIZE, next).apply()
         }
         return 1f
     }
@@ -368,10 +574,11 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
         false
 
     override fun onEmulatorSet() {
+        applyColorScheme()
         terminalView.onScreenUpdated()
     }
 
-    // ---- TerminalSessionClient -----------------------------------------------
+    // ---- TerminalSessionClient ----------------------------------------------------------
 
     override fun onTextChanged(changedSession: TerminalSession?) {
         terminalView.onScreenUpdated()
@@ -411,7 +618,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
 
     override fun getTerminalCursorStyle(): Int = TerminalEmulator.DEFAULT_TERMINAL_CURSOR_STYLE
 
-    // ---- Logging --------------------------------------------------------------
+    // ---- Logging -------------------------------------------------------------------------
 
     override fun logError(tag: String?, message: String?) = log(Log.ERROR, tag, message)
     override fun logWarn(tag: String?, message: String?) = log(Log.WARN, tag, message)
@@ -429,14 +636,5 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
 
     private fun log(priority: Int, tag: String?, message: String?) {
         Log.println(priority, LOG_TAG, "$tag: $message")
-    }
-
-    companion object {
-        private const val LOG_TAG = "AndroVim"
-        private const val KEY_TEXT_SIZE = "text_size"
-        private const val DEFAULT_TEXT_SIZE = 12
-        private const val MIN_TEXT_SIZE = 6
-        private const val MAX_TEXT_SIZE = 32
-        private val BG_COLOR = 0xFF0F1216.toInt()
     }
 }
