@@ -94,8 +94,8 @@ tar -czf "$ASSETS/aptdist.tar.gz" -C "$SRC" .
 date -u +"%Y%m%d%H%M%S-seeds-${SEEDS[*]}" | tr ' ' '+' > "$ASSETS/aptdist.ver"
 
 # sanity: the tar must contain the essential binaries
-for want in bin/apt bin/dpkg bin/busybox; do
-  tar -tzf "$ASSETS/aptdist.tar.gz" | grep -qx "$want" || {
+for want in 'bin/apt' 'bin/dpkg' 'bin/busybox'; do
+  tar -tzf "$ASSETS/aptdist.tar.gz" | grep -qE "^\.?/?$want\$" || {
     echo "FATAL: $want missing from aptdist.tar.gz"; exit 1;
   }
 done
