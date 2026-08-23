@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.system.Os
 import android.content.SharedPreferences
 import android.graphics.Typeface
 import android.hardware.input.InputManager
@@ -66,6 +67,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     private var overlayTap: (() -> Unit)? = null
     private var gotTerminalOutput = false
     private var probeGotOutput = false
+    private var diagReport = ""
 
     private val clipboardManager: ClipboardManager
         get() = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -251,64 +253,162 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     }
 
     /**
-     * The nvim TUI produced nothing. Test each link of the chain separately:
-     *  1. can a plain sh write through the pty?      (pty/exec infra)
-     *  2. does `nvim --version` produce output?       (binary + linker OK)
-     *  3. does `nvim -u NONE` draw?                   (user config hangs?)
-     * If only (3) works, enable safe mode permanently and restart.
+     * The nvim TUI produced nothing. Gather hard evidence:
+     *  - filesystem/exec sanity outside the terminal pipeline
+     *  - /proc inspection of the stuck nvim process (state + fd table!)
+     *  - can a plain sh write through the pty?      (pty/exec infra)
+     *  - does `nvim --version` produce output?       (binary + linker OK)
+     *  - does `nvim -u NONE` draw?                   (user config hangs?)
+     * Then saves the report, shows it and opens the share sheet.
      */
     private fun runLayeredDiagnostics(vlogTail: String) {
         val env = NvimRuntime.buildEnvironment(this)
         val cwd = NvimRuntime.homeDir(this).absolutePath
         val nvim = NvimRuntime.nvimPath(this)
 
-        fun killProbe() {
-            probeSession?.finishIfRunning()
-            probeSession = null
-            probeGotOutput = false
-        }
-        fun launchProbe(cmd: Array<String>, timeoutMs: Long, next: (Boolean) -> Unit) {
-            killProbe()
-            probeSession = TerminalSession(cmd[0], cwd, cmd, env, null, this)
-            window.decorView.postDelayed({
-                val ok = probeGotOutput
-                killProbe()
-                next(ok)
-            }, timeoutMs)
-        }
+        showOverlay("Executando diagnóstico automático (~30s)…\nNão toque na tela.") { }
 
-        // stage 1: pty sanity via /system/bin/sh
-        launchProbe(arrayOf("/system/bin/sh", "-c", "echo PTY_OK"), 3000) { ptyOk ->
-            // stage 2: binary/linker sanity
-            launchProbe(arrayOf("/system/bin/sh", "-c", "\"$nvim\" --version 2>&1 | head -c 120"), 6000) { binOk ->
-                // stage 3: no-config TUI
-                gotTerminalOutput = false
-                killProbe()
-                session?.finishIfRunning()
-                probeSession = TerminalSession(nvim, cwd, arrayOf(nvim, "-u", "NONE"), env, null, this)
-                terminalView.attachSession(probeSession!!)
-                window.decorView.postDelayed({
-                    val safeOk = gotTerminalOutput && probeSession?.isRunning == true
-                    if (safeOk) {
-                        getSharedPreferences(Prefs.FILE, MODE_PRIVATE)
-                            .edit().putBoolean(Prefs.SAFE_MODE, true).apply()
-                        hideOverlay()
-                        startSession()
-                    } else {
-                        probeSession?.finishIfRunning()
-                        probeSession = null
-                        showOverlay(
-                            "Diagnóstico automático:\n" +
-                                "• PTY (sh): ${if (ptyOk) "OK" else "SEM SAÍDA"}\n" +
-                                "• nvim executa (--version): ${if (binOk) "OK" else "SEM SAÍDA"}\n" +
-                                "• nvim sem configuração: ${if (safeOk) "OK" else "SEM SAÍDA"}\n\n" +
-                                "--- log -V3 ---\n$vlogTail\n\n" +
-                                "• Toque para reiniciar\n• Segure para compartilhar o log",
-                        ) { startSession() }
-                    }
-                }, 10000)
+        val report = StringBuilder()
+        fun finishReport() {
+            report.append("\n--- nvim -V3 ---\n").append(vlogTail)
+            diagReport = report.toString()
+            try {
+                File(getExternalFilesDir(null), "crash.txt").writeText(diagReport)
+            } catch (_: Throwable) {
+            }
+            showOverlay(diagReport) { startSession() }
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "Diagnóstico AndroVim")
+                putExtra(Intent.EXTRA_TEXT, diagReport)
+            }
+            try {
+                startActivity(Intent.createChooser(send, "Enviar diagnóstico"))
+            } catch (_: Throwable) {
             }
         }
+
+        Thread {
+            report.append("=== Diagnóstico AndroVim v${BuildConfig.VERSION_NAME} ===\n")
+            val bin = File(nvim)
+            report.append("binário existe: ").append(bin.exists())
+                .append(", tamanho: ").append(if (bin.exists()) bin.length() else -1).append('\n')
+            try {
+                val t = File(filesDir, ".diag-probe")
+                t.writeText("ok")
+                report.append("escrita filesDir: ").append(t.readText()).append('\n')
+                t.delete()
+            } catch (t: Throwable) {
+                report.append("escrita filesDir: FALHOU $t\n")
+            }
+            try {
+                val p = ProcessBuilder("sh", "-c", "echo EXEC_OK").start()
+                val out = p.inputStream.bufferedReader().readText().trim()
+                p.waitFor()
+                report.append("exec direto fora da sessão: '$out'\n")
+            } catch (t: Throwable) {
+                report.append("exec direto fora da sessão: FALHOU $t\n")
+            }
+            val stuckPid = synchronized(this) { session?.pid ?: -1 }
+            report.append("\n--- processo nvim travado (pid $stuckPid) ---\n")
+            report.append(collectProcInfo(stuckPid))
+
+            runOnUiThread {
+                var ptyOk = false
+
+                fun killProbe() {
+                    probeSession?.finishIfRunning()
+                    probeSession = null
+                    probeGotOutput = false
+                }
+
+                // stage 1: does data flow through the pty at all?
+                killProbe()
+                probeSession = TerminalSession(
+                    "/system/bin/sh",
+                    cwd,
+                    arrayOf("/system/bin/sh", "-c", "echo PTY_OK"),
+                    env,
+                    null,
+                    this,
+                )
+                window.decorView.postDelayed({
+                    ptyOk = probeGotOutput
+                    report.append("\nPTY (sh → pty): ").append(if (ptyOk) "OK" else "SEM SAÍDA").append('\n')
+                    killProbe()
+
+                    // stage 2: does the nvim binary load and run at all? (output to file)
+                    val verFile = File(filesDir, "diag-version.txt")
+                    verFile.delete()
+                    probeSession = TerminalSession(
+                        "/system/bin/sh",
+                        cwd,
+                        arrayOf("/system/bin/sh", "-c", "\"$nvim\" --version > '${verFile.absolutePath}' 2>&1"),
+                        env,
+                        null,
+                        this,
+                    )
+                    window.decorView.postDelayed({
+                        killProbe()
+                        val verTail = try {
+                            verFile.readText().trim().take(200)
+                        } catch (_: Throwable) {
+                            ""
+                        }
+                        report.append("nvim --version: ")
+                            .append(if (verTail.isNotEmpty()) "OK (${verTail.take(60)}…)" else "SEM SAÍDA")
+                            .append('\n')
+                        verFile.delete()
+
+                        // stage 3: does nvim draw without user config?
+                        gotTerminalOutput = false
+                        session?.finishIfRunning()
+                        probeSession = TerminalSession(nvim, cwd, arrayOf(nvim, "-u", "NONE"), env, null, this)
+                        terminalView.attachSession(probeSession!!)
+                        window.decorView.postDelayed {
+                            val safeOk = gotTerminalOutput && probeSession?.isRunning == true
+                            report.append("nvim sem configuração (-u NONE): ")
+                                .append(if (safeOk) "OK" else "SEM SAÍDA").append('\n')
+                            if (safeOk) {
+                                getSharedPreferences(Prefs.FILE, MODE_PRIVATE)
+                                    .edit().putBoolean(Prefs.SAFE_MODE, true).apply()
+                                hideOverlay()
+                                startSession()
+                            } else {
+                                probeSession?.finishIfRunning()
+                                probeSession = null
+                                finishReport()
+                            }
+                        }
+                    }, 6000)
+                }, 3000)
+            }
+        }.start()
+    }
+
+    private fun collectProcInfo(pid: Int): String {
+        if (pid <= 0) return "(sessão já encerrada)\n"
+        val sb = StringBuilder()
+        try {
+            val cmd = File("/proc/$pid/cmdline").readBytes().decodeToString().replace('\u0000', ' ')
+            sb.append("cmdline: ").append(cmd.ifBlank { "(vazio)" }).append('\n')
+            val stat = File("/proc/$pid/stat").readText()
+            val state = stat.substringAfterLast(") ").trim().split(' ').firstOrNull() ?: "?"
+            sb.append("estado: $state (S=dormindo R=rodando Z=zombie D=IO)\n")
+            val fds = File("/proc/$pid/fd").listFiles()
+            sb.append("fds abertos: ").append(fds?.size ?: -1).append('\n')
+            fds?.take(12)?.forEach { fd ->
+                val target = try {
+                    Os.readlink(fd.absolutePath)
+                } catch (_: Throwable) {
+                    "?"
+                }
+                sb.append("  fd").append(fd.name).append(" -> ").append(target).append('\n')
+            }
+        } catch (t: Throwable) {
+            sb.append("(processo não existe mais ou erro: $t)\n")
+        }
+        return sb.toString()
     }
 
     // ---- UI ----------------------------------------------------------------------
