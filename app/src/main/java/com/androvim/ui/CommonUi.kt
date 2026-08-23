@@ -15,12 +15,12 @@ import android.widget.TextView
 /** Small helpers so every settings screen looks consistent without material libs. */
 object Ui {
 
-    const val BG = 0xFF10141A.toInt()
-    const val CARD = 0xFF171E26.toInt()
-    const val FG = 0xFFD5DAE0.toInt()
-    const val MUTED = 0xFF8A97A5.toInt()
-    const val ACCENT = 0xFF7FBF7F.toInt()
-    const val DANGER = 0xFFE06C75.toInt()
+    val BG = 0xFF10141A.toInt()
+    val CARD = 0xFF171E26.toInt()
+    val FG = 0xFFD5DAE0.toInt()
+    val MUTED = 0xFF8A97A5.toInt()
+    val ACCENT = 0xFF7FBF7F.toInt()
+    val DANGER = 0xFFE06C75.toInt()
 
     fun dp(v: Int, ctx: Context): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), ctx.resources.displayMetrics)

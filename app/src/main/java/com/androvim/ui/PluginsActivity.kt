@@ -10,6 +10,7 @@ import android.widget.TextView
 import com.androvim.R
 import com.androvim.core.GitRunner
 import com.androvim.core.PluginOps
+import com.androvim.data.NvimPlugin
 import com.androvim.data.PluginCatalog
 import com.androvim.ui.Ui.dp
 import java.util.concurrent.atomic.AtomicBoolean
@@ -128,7 +129,7 @@ class PluginsActivity : Activity() {
 
     private fun catalogCount(): Int = PluginCatalog.ALL.size
 
-    private fun pluginCard(plugin: PluginCatalog.NvimPlugin): View {
+    private fun pluginCard(plugin: NvimPlugin): View {
         val card = Ui.card(this)
         val headerRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         headerRow.addView(Ui.label(this, plugin.label, 14f, bold = true))
@@ -216,7 +217,7 @@ class PluginsActivity : Activity() {
     private fun dirNameOf(id: String): String =
         PluginOps.installed(this).firstOrNull { it.id == id }?.dirName ?: id
 
-    private fun showInfo(plugin: PluginCatalog.NvimPlugin) {
+    private fun showInfo(plugin: NvimPlugin) {
         val deps = if (plugin.dependsOn.isEmpty()) ""
         else "\n\nDependências: ${plugin.dependsOn.joinToString(", ")}"
         val config = plugin.configLua?.let { "\n\n--- Config aplicada ---\n$it" } ?: ""

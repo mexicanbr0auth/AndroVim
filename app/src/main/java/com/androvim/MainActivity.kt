@@ -330,7 +330,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(10), dp(9), dp(10), dp(9))
                 background = Ui.rounded(this@MainActivity, 0x00000000, 8f)
-                setOnClickListener(onClick)
+                setOnClickListener { onClick() }
             }
             row.addView(TextView(this@MainActivity).apply {
                 text = label
