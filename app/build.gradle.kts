@@ -29,6 +29,12 @@ android {
         buildConfig = true
     }
 
+    lint {
+        // targetSdk 28 is intentional: it keeps exec() allowed on app-writable
+        // storage so runtime-installed tools work. Not distributed via Play.
+        disable += "ExpiredTargetSdkVersion"
+    }
+
     signingConfigs {
         if (System.getenv("ANDROVIM_KS_PATH") != null) {
             create("ci") {
