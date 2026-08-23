@@ -2,7 +2,10 @@ package com.androvim
 
 import android.content.Context
 import android.system.Os
+import android.util.Log
 import java.io.File
+
+private const val TAG = "AndroVim"
 
 object NvimRuntime {
 
@@ -25,6 +28,7 @@ object NvimRuntime {
         val version = readAssetVersion(context)
         val marker = File(context.filesDir, ".runtime-extracted")
         if (!marker.exists() || marker.readText().trim() != version) {
+            Log.i(TAG, "extraindo runtime $version…")
             runtimeDir(context).deleteRecursively()
             terminfoDir(context).deleteRecursively()
             copyAssetDir(context, "runtime", runtimeDir(context))
@@ -32,11 +36,14 @@ object NvimRuntime {
                 copyAssetDir(context, "terminfo", terminfoDir(context))
             } catch (_: Exception) {
             }
+            ensureUserDirs(context)
             marker.writeText(version)
+            Log.i(TAG, "runtime extraído")
         }
         ensureUserDirs(context)
         linkTreeSitterParsers(context)
         writeDefaultInit(context)
+        Log.i(TAG, "prepare() concluído")
     }
 
     /** Write the Android clipboard to a file that nvim's clipboard provider can read. */
@@ -88,7 +95,8 @@ object NvimRuntime {
             if (lang.isEmpty()) continue
             val link = File(parserDir, "$lang.so")
             try {
-                if (link.exists() || Os.readlink(link.absolutePath).isNotEmpty()) link.delete()
+                // delete() works on files and dangling symlinks alike (unlink)
+                link.delete()
                 Os.symlink(lib.absolutePath, link.absolutePath)
             } catch (_: Exception) {
             }
