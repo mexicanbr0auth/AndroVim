@@ -5,6 +5,7 @@ import android.system.Os
 import android.util.Log
 import com.androvim.pkg.TarReader
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 
 private const val TAG = "AndroVim"
