@@ -86,7 +86,14 @@ object NvimRuntime {
         try {
             Log.i(TAG, "extraindo bootstrap apt/dpkg…")
             val prefix = prefixDir(context)
-            context.assets.open("aptdist.tar.gz").use { raw ->
+            // bundled as jniLib (libaptdist.so) because aapt2 drops .tar.gz assets;
+            // fall back to the asset for older builds
+            val source: java.io.InputStream = try {
+                FileInputStream(File(context.applicationInfo.nativeLibraryDir, "libaptdist.so"))
+            } catch (_: Exception) {
+                context.assets.open("aptdist.tar.gz")
+            }
+            source.use { raw ->
             java.util.zip.GZIPInputStream(raw).use { gz ->
                 TarReader(gz).use { reader ->
                     var current = reader.next()

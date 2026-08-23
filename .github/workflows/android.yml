@@ -79,9 +79,9 @@ jobs:
         run: |
           for apk in AndroVim-debug.apk AndroVim-release.apk; do
             echo "== $apk =="
-            unzip -l "$apk" | grep -q "assets/aptdist.tar.gz" || { echo "FATAL: aptdist.tar.gz missing from $apk"; exit 1; }
-            unzip -l "$apk" | grep -q "assets/aptdist.ver"   || { echo "FATAL: aptdist.ver missing from $apk"; exit 1; }
-            unzip -l "$apk" | grep "aptdist.tar.gz"
+            unzip -l "$apk" | grep -q "lib/arm64-v8a/libaptdist.so" || { echo "FATAL: libaptdist.so missing from $apk"; exit 1; }
+            unzip -l "$apk" | grep -q "assets/aptdist.ver"       || { echo "FATAL: aptdist.ver missing from $apk"; exit 1; }
+            unzip -l "$apk" | grep "aptdist"
           done
 
       - name: Upload debug APK

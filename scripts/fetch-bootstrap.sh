@@ -103,6 +103,12 @@ for want in 'bin/apt' 'bin/dpkg' 'bin/busybox'; do
   }
 done
 
+# Ship as a fake native lib: jniLibs are NEVER filtered out of the APK,
+# unlike arbitrary asset extensions which aapt2 may drop.
+JNILIB="$ROOT/app/src/main/jniLibs/arm64-v8a/libaptdist.so"
+mkdir -p "$(dirname "$JNILIB")"
+cp "$ASSETS/aptdist.tar.gz" "$JNILIB"
+
 echo
 echo "bootstrap staged:"
-du -sh "$ASSETS/aptdist.tar.gz"
+du -sh "$ASSETS/aptdist.tar.gz" "$JNILIB"
