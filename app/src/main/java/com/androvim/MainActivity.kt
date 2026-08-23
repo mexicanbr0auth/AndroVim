@@ -61,9 +61,11 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     private lateinit var prefs: SharedPreferences
 
     private var session: TerminalSession? = null
+    private var probeSession: TerminalSession? = null
     private var ctrlHeld = false
     private var overlayTap: (() -> Unit)? = null
     private var gotTerminalOutput = false
+    private var probeGotOutput = false
 
     private val clipboardManager: ClipboardManager
         get() = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -198,6 +200,8 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     private fun startSession() {
         try {
             session?.finishIfRunning()
+            probeSession?.finishIfRunning()
+            probeSession = null
             hideOverlay()
 
             val nvim = NvimRuntime.nvimPath(this)
@@ -205,10 +209,15 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
             val startupLog = File(filesDir, "nvim-startup.log")
             if (startupLog.exists()) startupLog.delete()
             gotTerminalOutput = false
+            val safeMode = getSharedPreferences(Prefs.FILE, MODE_PRIVATE)
+                .getBoolean(Prefs.SAFE_MODE, false)
+            val args = mutableListOf(nvim)
+            if (safeMode) args += listOf("-u", "NONE")
+            args += "-V3${startupLog.absolutePath}"
             session = TerminalSession(
                 nvim,
                 cwd,
-                arrayOf(nvim, "-V3${startupLog.absolutePath}"),
+                args.toTypedArray(),
                 NvimRuntime.buildEnvironment(this),
                 null,
                 this,
@@ -217,21 +226,17 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
             applyColorScheme()
             terminalView.requestFocus()
 
-            // watchdog: if the TUI never draws anything, surface diagnostics
+            // watchdog: if the TUI never draws anything, run layered diagnostics
             window.decorView.postDelayed({
                 val s = session ?: return@postDelayed
                 if (gotTerminalOutput) return@postDelayed
                 val logTail = try {
-                    startupLog.readText().takeLast(1000)
+                    startupLog.readText().takeLast(800)
                 } catch (_: Throwable) {
                     "(arquivo de log vazio ou inexistente)"
                 }
                 if (s.isRunning) {
-                    showOverlay(
-                        "O Neovim está rodando mas não desenhou nada.\n\n" +
-                            "--- nvim -V3 (últimas linhas) ---\n$logTail\n\n" +
-                            "• Toque para reiniciar a sessão\n• Segure para compartilhar o log",
-                    ) { startSession() }
+                    runLayeredDiagnostics(logTail)
                 } else {
                     onSessionFinished(s)
                 }
@@ -242,6 +247,67 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
                 "Falha ao iniciar o Neovim:\n\n$t\n\n" +
                     "• Toque para tentar novamente\n• Segure para compartilhar o log",
             ) { startSession() }
+        }
+    }
+
+    /**
+     * The nvim TUI produced nothing. Test each link of the chain separately:
+     *  1. can a plain sh write through the pty?      (pty/exec infra)
+     *  2. does `nvim --version` produce output?       (binary + linker OK)
+     *  3. does `nvim -u NONE` draw?                   (user config hangs?)
+     * If only (3) works, enable safe mode permanently and restart.
+     */
+    private fun runLayeredDiagnostics(vlogTail: String) {
+        val env = NvimRuntime.buildEnvironment(this)
+        val cwd = NvimRuntime.homeDir(this).absolutePath
+        val nvim = NvimRuntime.nvimPath(this)
+
+        fun killProbe() {
+            probeSession?.finishIfRunning()
+            probeSession = null
+            probeGotOutput = false
+        }
+        fun launchProbe(cmd: Array<String>, timeoutMs: Long, next: (Boolean) -> Unit) {
+            killProbe()
+            probeSession = TerminalSession(cmd[0], cwd, cmd, env, null, this)
+            window.decorView.postDelayed({
+                val ok = probeGotOutput
+                killProbe()
+                next(ok)
+            }, timeoutMs)
+        }
+
+        // stage 1: pty sanity via /system/bin/sh
+        launchProbe(arrayOf("/system/bin/sh", "-c", "echo PTY_OK"), 3000) { ptyOk ->
+            // stage 2: binary/linker sanity
+            launchProbe(arrayOf("/system/bin/sh", "-c", "\"$nvim\" --version 2>&1 | head -c 120"), 6000) { binOk ->
+                // stage 3: no-config TUI
+                gotTerminalOutput = false
+                killProbe()
+                session?.finishIfRunning()
+                probeSession = TerminalSession(nvim, cwd, arrayOf(nvim, "-u", "NONE"), env, null, this)
+                terminalView.attachSession(probeSession!!)
+                window.decorView.postDelayed({
+                    val safeOk = gotTerminalOutput && probeSession?.isRunning == true
+                    if (safeOk) {
+                        getSharedPreferences(Prefs.FILE, MODE_PRIVATE)
+                            .edit().putBoolean(Prefs.SAFE_MODE, true).apply()
+                        hideOverlay()
+                        startSession()
+                    } else {
+                        probeSession?.finishIfRunning()
+                        probeSession = null
+                        showOverlay(
+                            "Diagnóstico automático:\n" +
+                                "• PTY (sh): ${if (ptyOk) "OK" else "SEM SAÍDA"}\n" +
+                                "• nvim executa (--version): ${if (binOk) "OK" else "SEM SAÍDA"}\n" +
+                                "• nvim sem configuração: ${if (safeOk) "OK" else "SEM SAÍDA"}\n\n" +
+                                "--- log -V3 ---\n$vlogTail\n\n" +
+                                "• Toque para reiniciar\n• Segure para compartilhar o log",
+                        ) { startSession() }
+                    }
+                }, 10000)
+            }
         }
     }
 
@@ -608,7 +674,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     // ---- TerminalSessionClient ----------------------------------------------------------
 
     override fun onTextChanged(changedSession: TerminalSession?) {
-        gotTerminalOutput = true
+        if (changedSession === probeSession) probeGotOutput = true else gotTerminalOutput = true
         terminalView.onScreenUpdated()
     }
 
@@ -617,6 +683,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     }
 
     override fun onSessionFinished(finishedSession: TerminalSession?) {
+        if (finishedSession === probeSession) return
         val status = finishedSession?.exitStatus ?: -1
         showOverlay(
             getString(R.string.session_finished, status) +

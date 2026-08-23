@@ -14,6 +14,7 @@ object Prefs {
     const val EXTRA_KEYS_SHOW = "show"
     const val EXTRA_KEYS_HIDE = "hide"
     const val KEEP_SCREEN_ON = "keep_screen_on"
+    const val SAFE_MODE = "safe_mode"
 
     fun get(context: Context): SharedPreferences =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)

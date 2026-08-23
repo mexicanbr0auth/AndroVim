@@ -235,8 +235,14 @@ object PkgManager {
         conn.connectTimeout = 20000
         conn.readTimeout = 60000
         conn.setRequestProperty("User-Agent", UA)
+        conn.setRequestProperty("Accept-Encoding", "gzip")
         if (conn.responseCode != 200) throw Exception("HTTP ${conn.responseCode}: $url")
-        return conn.inputStream.use { it.readBytes().decodeToString() }
+        val stream = if (conn.contentEncoding?.contains("gzip", ignoreCase = true) == true) {
+            java.util.zip.GZIPInputStream(conn.inputStream)
+        } else {
+            conn.inputStream
+        }
+        return stream.use { it.readBytes().decodeToString() }
     }
 
     private fun downloadTo(url: String, dest: File, label: String? = null, progress: ((String) -> Unit)? = null) {

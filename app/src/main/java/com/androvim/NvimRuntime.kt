@@ -120,15 +120,6 @@ object NvimRuntime {
         }
     }
 
-    /** Termux's nvim shim preloads LuaJIT so dlopen'ed plugin modules can bind. */
-    private fun luajitLibPath(context: Context): String? {
-        val dir = context.applicationInfo.nativeLibraryDir
-        val match = File(dir).listFiles { _, n ->
-            n.startsWith("libluajit") && n.endsWith(".so")
-        }?.firstOrNull() ?: return null
-        return File(dir, match.name).absolutePath
-    }
-
     private fun writeDefaultInit(context: Context) {
         val init = File(homeDir(context), ".config/nvim/init.lua")
         if (!init.exists()) {
@@ -181,11 +172,11 @@ object NvimRuntime {
             "XDG_DATA_DIRS=${context.filesDir.absolutePath}/share",
             "LUA_CPATH=$nativeLib/?.so;;",
             "PREFIX=$prefix",
-            "LD_LIBRARY_PATH=$nativeLib:$prefix/lib",
+            "LD_LIBRARY_PATH=$prefix/lib:$nativeLib",
             "GIT_EXEC_PATH=$prefix/libexec/git-core",
+            "NVIM_LOG_FILE=${File(context.filesDir, "nvim.log").absolutePath}",
             "ANDROVIM_PASTE_FILE=${pasteFile(context).absolutePath}",
         )
-        luajitLibPath(context)?.let { env.add("LD_PRELOAD=$it") }
         return env.toTypedArray()
     }
 
