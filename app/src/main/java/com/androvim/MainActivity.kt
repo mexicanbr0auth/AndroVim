@@ -365,7 +365,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
                         session?.finishIfRunning()
                         probeSession = TerminalSession(nvim, cwd, arrayOf(nvim, "-u", "NONE"), env, null, this)
                         terminalView.attachSession(probeSession!!)
-                        window.decorView.postDelayed {
+                        window.decorView.postDelayed({
                             val safeOk = gotTerminalOutput && probeSession?.isRunning == true
                             report.append("nvim sem configuração (-u NONE): ")
                                 .append(if (safeOk) "OK" else "SEM SAÍDA").append('\n')
@@ -379,7 +379,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
                                 probeSession = null
                                 finishReport()
                             }
-                        }
+                        }, 10000)
                     }, 6000)
                 }, 3000)
             }
