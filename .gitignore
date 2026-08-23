@@ -15,3 +15,5 @@ app/src/main/jniLibs/*
 app/src/main/assets/runtime/
 app/src/main/assets/terminfo/
 app/src/main/assets/lua/
+app/src/main/assets/aptdist.tar.gz
+app/src/main/assets/aptdist.ver

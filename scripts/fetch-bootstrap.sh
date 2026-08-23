@@ -94,8 +94,11 @@ tar -czf "$ASSETS/aptdist.tar.gz" -C "$SRC" .
 date -u +"%Y%m%d%H%M%S-seeds-${SEEDS[*]}" | tr ' ' '+' > "$ASSETS/aptdist.ver"
 
 # sanity: the tar must contain the essential binaries
+# (capture listing first: grep -q would SIGPIPE tar under set -o pipefail)
+LISTING="$STAGE/listing.txt"
+tar -tzf "$ASSETS/aptdist.tar.gz" > "$LISTING"
 for want in 'bin/apt' 'bin/dpkg' 'bin/busybox'; do
-  tar -tzf "$ASSETS/aptdist.tar.gz" | grep -qE "^\.?/?$want\$" || {
+  grep -qE "^\.?/?$want\$" "$LISTING" || {
     echo "FATAL: $want missing from aptdist.tar.gz"; exit 1;
   }
 done
