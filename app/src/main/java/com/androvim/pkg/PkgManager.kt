@@ -264,7 +264,7 @@ object PkgManager {
         } else {
             conn.inputStream
         }
-        return stream.use { it.readBytes().decodeToString() }
+        stream.use { it.readBytes().decodeToString() }
     }
 
     private fun downloadTo(
