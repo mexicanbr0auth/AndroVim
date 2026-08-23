@@ -84,7 +84,7 @@ class ToolsActivity : Activity() {
             textSize = 11f
             setTextColor(0xFF9FE29F.toInt())
             setPadding(dp(8, this@ToolsActivity), dp(8, this@ToolsActivity), dp(8, this@ToolsActivity), dp(8, this@ToolsActivity))
-            textIsSelectable = true
+            setTextIsSelectable(true)
         }
         consoleScroll.addView(console)
         root.addView(consoleScroll)
