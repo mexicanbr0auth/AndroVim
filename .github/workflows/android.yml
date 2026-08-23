@@ -34,6 +34,16 @@ jobs:
       - name: Fetch Neovim binaries and runtime
         run: ./scripts/fetch-nvim.sh
 
+      - name: Source sanity check
+        run: |
+          echo "=== kotlin sources ==="
+          find app/src/main/java -name "*.kt" | sort
+          echo "=== mystery files ==="
+          md5sum app/src/main/java/com/androvim/data/ColorSchemes.kt \
+                 app/src/main/java/com/androvim/ui/CommonUi.kt
+          head -3 app/src/main/java/com/androvim/data/ColorSchemes.kt
+          head -3 app/src/main/java/com/androvim/ui/CommonUi.kt
+
       - name: Prepare ephemeral signing keystore
         run: |
           KS_PASS="$(openssl rand -hex 16)"

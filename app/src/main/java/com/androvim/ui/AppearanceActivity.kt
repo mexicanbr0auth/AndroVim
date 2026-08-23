@@ -121,7 +121,7 @@ class AppearanceActivity : Activity() {
             prefs.edit().putString(Prefs.COLOR_SCHEME, id).apply()
             recreate()
         }
-        val selected = prefs.getString(Prefs.COLOR_SCHEME, ColorSchemes.DEFAULT_ID) == id
+        val selected = prefs.getString(Prefs.COLOR_SCHEME, "default") == id
         if (selected) card.background = Ui.rounded(this, 0xFF22303C.toInt())
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         header.addView(Ui.label(this, name, 14f, bold = true))
