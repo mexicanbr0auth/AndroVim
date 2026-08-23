@@ -354,7 +354,8 @@ def main():
         assets_runtime = os.path.join(args.assets, "runtime")
         shutil.rmtree(assets_runtime, ignore_errors=True)
         copy_tree_resolving(runtime_src, assets_runtime)
-        with open(os.path.join(assets_runtime, ".androvim-version"), "w") as fh:
+        # NB: no leading dot — aapt2 drops hidden files from assets/
+        with open(os.path.join(assets_runtime, "androvim-version"), "w") as fh:
             fh.write(f"{nvim_pkg['Version']}\n")
         terminfo_src = os.path.join(stage, "usr/share/terminfo")
         if os.path.isdir(terminfo_src):

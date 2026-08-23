@@ -51,7 +51,9 @@ object NvimRuntime {
     }
 
     private fun readAssetVersion(context: Context): String = try {
-        context.assets.open("runtime/.androvim-version").use { it.readBytes().decodeToString() }.trim()
+        context.assets.open("runtime/androvim-version").use {
+            it.readBytes().decodeToString()
+        }.trim()
     } catch (_: Exception) {
         "unknown"
     }
