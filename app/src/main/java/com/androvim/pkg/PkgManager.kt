@@ -36,6 +36,7 @@ object PkgManager {
         val sha256: String,
         val size: Long,
         val depends: List<String>,
+        val description: String = "",
     )
 
     // ---- Paths ---------------------------------------------------------------
@@ -112,6 +113,7 @@ object PkgManager {
                 filename = stanza["Filename"] ?: return,
                 sha256 = stanza["SHA256"] ?: "",
                 size = stanza["Size"]?.toLongOrNull() ?: 0L,
+                description = stanza["Description"] ?: "",
                 depends = stanza["Depends"]
                     ?.split(',')
                     ?.map { it.trim().substringBefore('(').substringBefore('|').trim() }

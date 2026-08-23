@@ -89,9 +89,121 @@ class ToolsActivity : Activity() {
         consoleScroll.addView(console)
         root.addView(consoleScroll)
 
+        // ---- command line ("mini terminal") -------------------------------------
+        val cmdRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xFF0B0E12.toInt())
+            setPadding(dp(6, this@ToolsActivity), dp(4, this@ToolsActivity), dp(6, this@ToolsActivity), dp(4, this@ToolsActivity))
+        }
+        val prompt = TextView(this).apply {
+            text = "$"
+            typeface = Typeface.MONOSPACE
+            textSize = 12f
+            setTextColor(0xFF9FE29F.toInt())
+            setPadding(dp(4, this@ToolsActivity), 0, dp(6, this@ToolsActivity), 0)
+        }
+        val input = android.widget.EditText(this).apply {
+            hint = "instalar git · procurar python · ajuda"
+            typeface = Typeface.MONOSPACE
+            textSize = 12f
+            setTextColor(0xFFE6ECEF.toInt())
+            setHintTextColor(0xFF5A6672.toInt())
+            setBackgroundColor(0x00000000)
+            isSingleLine = true
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEND
+        }
+        input.setOnEditorActionListener { _, _, _ -> submit(input); true }
+        val sendBtn = Ui.button(this, "▶") { submit(input) }
+        cmdRow.addView(prompt)
+        cmdRow.addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        cmdRow.addView(sendBtn)
+        root.addView(cmdRow)
+
         setContentView(root)
-        log("gerenciador pronto; toque em Instalar ou ↻ para atualizar o catálogo")
+        log("gerenciador pronto; toque em Instalar, use ↻ ou digite um comando")
         refresh()
+    }
+
+    private fun submit(input: android.widget.EditText) {
+        val raw = input.text.toString().trim()
+        if (raw.isEmpty()) return
+        if (!busy.compareAndSet(false, true)) {
+            log("ocupado — aguarde o comando atual terminar")
+            return
+        }
+        input.setText("")
+        log("$ ${raw.replace('\n', ' ')}")
+        Thread { execCommand(raw) }.start()
+    }
+
+    private fun execCommand(raw: String) {
+        val parts = raw.split(Regex("\\s+"))
+        val cmd = parts[0].lowercase()
+        val args = parts.drop(1)
+        try {
+            when (cmd) {
+                "ajuda", "help" -> {
+                    log("comandos:")
+                    log("  instalar <pkg> [pkg…]   instala pacote(s) + dependências")
+                    log("  remover <pkg>           remove pacote")
+                    log("  atualizar               força atualização do catálogo")
+                    log("  procurar <termo>        busca no repositório (máx 15)")
+                    log("  lista [filtro]          lista instalados")
+                    log("  limpar                  limpa este console")
+                }
+                "limpar", "clear" -> runOnUiThread { console.text = "" }
+                "atualizar", "update" -> {
+                    val t0 = System.currentTimeMillis()
+                    val index = PkgManager.loadIndex(this, forceRefresh = true) { m -> log(m) }
+                    log("catálogo pronto: ${index.size} pacotes em ${(System.currentTimeMillis() - t0) / 1000.0}s")
+                }
+                "procurar", "search" -> {
+                    if (args.isEmpty()) { log("uso: procurar <termo>"); return }
+                    val term = args.joinToString(" ").lowercase()
+                    val index = PkgManager.loadIndex(this) { m -> log(m) }
+                    index.values.filter {
+                        it.name.contains(term) || it.description.lowercase().contains(term)
+                    }.sortedBy { it.name }.take(15).forEach {
+                        log("${it.name} (${it.version}) ${if (it.description.isNotBlank()) "— ${it.description.take(70)}" else ""}")
+                    }
+                    log("---")
+                }
+                "lista", "list" -> {
+                    val filter = args.joinToString(" ").lowercase()
+                    val installed = PkgManager.installedMap(this)
+                    var n = 0
+                    installed.keys.sorted().forEach { name ->
+                        if (filter.isEmpty() || name.contains(filter)) {
+                            val ver = installed[name]?.optString("version") ?: "?"
+                            log("$name ($ver)")
+                            n++
+                        }
+                    }
+                    log("$n pacote(s) instalado(s)")
+                }
+                "remover", "remove" -> {
+                    if (args.isEmpty()) { log("uso: remover <pkg>"); return }
+                    for (name in args) {
+                        log("removendo $name…")
+                        PkgManager.uninstall(this, name)
+                        log("$name removido ✓")
+                    }
+                    runOnUiThread { refresh() }
+                }
+                "instalar", "install", "pkg", "apt" -> {
+                    if (args.isEmpty()) { log("uso: instalar <pkg> [pkg…]"); return }
+                    PkgManager.install(this, args) { m -> log(m) }
+                    log("concluído ✓")
+                    runOnUiThread { refresh() }
+                }
+                else -> log("comando desconhecido '$cmd' — digite 'ajuda'")
+            }
+        } catch (e: Exception) {
+            log("ERRO: ${e.message}")
+        } finally {
+            busy.set(false)
+        }
     }
 
     override fun onResume() {
