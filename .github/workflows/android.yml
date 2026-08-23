@@ -1,0 +1,78 @@
+name: Android CI
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install native tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf zstd
+
+      - name: Fetch Neovim binaries and runtime
+        run: ./scripts/fetch-nvim.sh
+
+      - name: Prepare ephemeral signing keystore
+        run: |
+          KS_PASS="$(openssl rand -hex 16)"
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/androvim.jks" \
+            -alias androvim -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$KS_PASS" -keypass "$KS_PASS" \
+            -dname "CN=AndroVim CI, OU=AndroVim, O=AndroVim"
+          {
+            echo "ANDROVIM_KS_PATH=$RUNNER_TEMP/androvim.jks"
+            echo "ANDROVIM_KS_PASS=$KS_PASS"
+            echo "ANDROVIM_KS_ALIAS=androvim"
+            echo "ANDROVIM_KS_KEY_PASS=$KS_PASS"
+          } >> "$GITHUB_ENV"
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Build release APK
+        run: ./gradlew --no-daemon :app:assembleRelease --stacktrace
+
+      - name: Rename APKs
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk AndroVim-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk AndroVim-release.apk
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: AndroVim-apks
+          path: |
+            AndroVim-debug.apk
+            AndroVim-release.apk
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            AndroVim-debug.apk
+            AndroVim-release.apk
+          generate_release_notes: true

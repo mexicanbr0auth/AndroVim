@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+buildSrc/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Binaries staged by scripts/fetch-nvim.sh — recreated by CI on every build
+app/src/main/jniLibs/*
+!app/src/main/jniLibs/.gitkeep
+app/src/main/assets/runtime/
+app/src/main/assets/terminfo/
+app/src/main/assets/lua/

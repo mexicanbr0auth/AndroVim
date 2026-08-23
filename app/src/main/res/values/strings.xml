@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AndroVim</string>
+    <string name="clipboard_synced">Área de transferência sincronizada — use "+p para colar</string>
+    <string name="clipboard_empty">Área de transferência vazia</string>
+    <string name="session_finished">O Neovim terminou (código %1$d).\n\nToque para reiniciar.</string>
+</resources>
