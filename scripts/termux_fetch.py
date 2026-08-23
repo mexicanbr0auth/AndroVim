@@ -211,6 +211,24 @@ def patchelf(*args, optional=False):
     return proc
 
 
+def copy_tree_resolving(src, dst):
+    """Copy a tree into an Android assets dir. APK assets cannot represent
+    symlinks, so linked directories are followed and dangling links dropped."""
+    skipped = 0
+    for dirpath, _dirnames, filenames in os.walk(src, followlinks=True):
+        rel = os.path.relpath(dirpath, src)
+        out_dir = dst if rel == "." else os.path.join(dst, rel)
+        os.makedirs(out_dir, exist_ok=True)
+        for fn in filenames:
+            s = os.path.join(dirpath, fn)
+            if os.path.islink(s) and not os.path.exists(s):
+                skipped += 1
+                continue
+            shutil.copy2(s, os.path.join(out_dir, fn))
+    if skipped:
+        print(f"note: dropped {skipped} dangling symlinks while copying {src}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--arch", required=True, choices=sorted(ARCH_MAP))
@@ -335,13 +353,13 @@ def main():
             die("runtime files missing in staging area")
         assets_runtime = os.path.join(args.assets, "runtime")
         shutil.rmtree(assets_runtime, ignore_errors=True)
-        shutil.copytree(runtime_src, assets_runtime)
+        copy_tree_resolving(runtime_src, assets_runtime)
         with open(os.path.join(assets_runtime, ".androvim-version"), "w") as fh:
             fh.write(f"{nvim_pkg['Version']}\n")
         terminfo_src = os.path.join(stage, "usr/share/terminfo")
         if os.path.isdir(terminfo_src):
             shutil.rmtree(os.path.join(args.assets, "terminfo"), ignore_errors=True)
-            shutil.copytree(terminfo_src, os.path.join(args.assets, "terminfo"))
+            copy_tree_resolving(terminfo_src, os.path.join(args.assets, "terminfo"))
 
     size_kb = sum(
         os.path.getsize(os.path.join(args.jni, f)) for f in os.listdir(args.jni)
