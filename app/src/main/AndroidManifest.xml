@@ -26,6 +26,12 @@
         </activity>
 
         <activity
+            android:name=".TerminalActivity"
+            android:label="@string/menu_terminal"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|smallestScreenSize|density|uiMode" />
+
+        <activity
             android:name=".ui.AppearanceActivity"
             android:label="@string/menu_appearance"
             android:windowSoftInputMode="adjustPan"

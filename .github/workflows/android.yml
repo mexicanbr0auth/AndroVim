@@ -34,6 +34,11 @@ jobs:
       - name: Fetch Neovim binaries and runtime
         run: ./scripts/fetch-nvim.sh
 
+      - name: Fetch apt/dpkg bootstrap
+        run: |
+          chmod +x scripts/fetch-bootstrap.sh
+          ./scripts/fetch-bootstrap.sh
+
       - name: Source sanity check
         run: |
           echo "=== kotlin sources ==="

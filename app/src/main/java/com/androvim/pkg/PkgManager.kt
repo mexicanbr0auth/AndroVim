@@ -233,7 +233,26 @@ object PkgManager {
 
     // ---- Download ---------------------------------------------------------------
 
-    private fun httpGet(url: String): String {
+    /** Retry transient network failures (DNS hiccups are common on mobile). */
+    private fun <T> retrying(what: String, times: Int = 3, f: () -> T): T {
+        var last: Exception? = null
+        for (i in 0 until times) {
+            try {
+                return f()
+            } catch (e: Exception) {
+                last = e
+                if (i < times - 1) {
+                    try {
+                        Thread.sleep(2000L shl i)
+                    } catch (_: InterruptedException) {
+                    }
+                }
+            }
+        }
+        throw Exception("$what falhou após $times tentativas: ${last?.message}", last)
+    }
+
+    private fun httpGet(url: String): String = retrying("download") {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 20000
         conn.readTimeout = 60000
@@ -248,7 +267,12 @@ object PkgManager {
         return stream.use { it.readBytes().decodeToString() }
     }
 
-    private fun downloadTo(url: String, dest: File, label: String? = null, progress: ((String) -> Unit)? = null) {
+    private fun downloadTo(
+        url: String,
+        dest: File,
+        label: String? = null,
+        progress: ((String) -> Unit)? = null,
+    ): Unit = retrying("download de ${label ?: url.substringAfterLast('/')}") {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 20000
         conn.readTimeout = 120000

@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# Stage an apt/dpkg bootstrap (termux binaries) into assets as a single tar.gz.
+# Resolved dependency closure lets the app ship a working `apt` out of the box.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ASSETS="$ROOT/app/src/main/assets"
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
+
+REPO="${REPO:-https://packages.termux.dev/apt/termux-main}"
+ARCH="${BOOTSTRAP_ARCH:-aarch64}"
+SEEDS=(apt dpkg termux-keyring ca-certificates busybox)
+
+command -v python3 >/dev/null || { echo "python3 required"; exit 1; }
+command -v zstd >/dev/null || { echo "zstd required"; exit 1; }
+
+IDX="$STAGE/Packages"
+curl -fsSL "$REPO/dists/stable/main/binary-$ARCH/Packages" -o "$IDX"
+
+FILES=$(python3 - "$IDX" "${SEEDS[@]}" <<'PY'
+import sys
+
+index = {}
+name = None
+stanza = {}
+def flush():
+    global name, stanza
+    if name:
+        index[name] = stanza
+    stanza = {}
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    line = line.rstrip("\n")
+    if not line.strip():
+        flush(); continue
+    if line[0] in " \t" and stanza:
+        k = next(iter(stanza)); stanza[k] += "\n" + line.strip(); continue
+    if ":" in line:
+        k, v = line.split(":", 1); stanza[k.strip()] = v.strip()
+        name = stanza.get("Package")
+flush()
+
+seen, queue = set(), list(sys.argv[2:])
+while queue:
+    p = queue.pop(0)
+    if p in seen or p not in index: continue
+    seen.add(p)
+    deps = [d.strip().split(" ")[0].split("|")[0]
+            for d in index[p].get("Depends", "").split(",") if d.strip()]
+    queue.extend(deps)
+
+for p in sorted(seen):
+    print(index[p]["Filename"])
+PY
+)
+
+[ -n "$FILES" ] || { echo "no packages resolved"; exit 1; }
+echo "== bootstrap packages =="; echo "$FILES"
+
+DL="$STAGE/debs"; mkdir -p "$DL" "$STAGE/root"
+n=0
+for fn in $FILES; do
+  n=$((n+1))
+  base=$(basename "$fn")
+  curl -fsSL --retry 3 "$REPO/$fn" -o "$DL/$base"
+  # unwrap the ar archive member data.tar.*
+  python3 - "$DL/$base" "$STAGE" <<'PY'
+import sys, subprocess
+data = open(sys.argv[1], "rb").read()
+assert data[:8] == b"!<arch>\n", "not a deb"
+off = 8
+while off < len(data):
+    hdr = data[off:off+60]; off += 60
+    mname = hdr[0:16].decode().strip()
+    msize = int(hdr[48:58].decode().strip())
+    member = data[off:off+msize]; off += msize + (msize % 2)
+    if mname.startswith("data.tar"):
+        open(f"{sys.argv[2]}/data.tar.bin", "wb").write(member)
+        sys.exit(0)
+sys.exit("data.tar not found")
+PY
+  tar -xf "$STAGE/data.tar.bin" -C "$STAGE/root" 2>/dev/null || \
+    tar -I zstd -xf "$STAGE/data.tar.bin" -C "$STAGE/root"
+  rm -f "$STAGE/data.tar.bin"
+done
+
+# flatten termux prefix layout: data/data/com.termux/files/usr/<rest> -> <rest>
+SRC="$STAGE/root/data/data/com.termux/files/usr"
+[ -d "$SRC" ] || SRC="$STAGE/root/usr"
+[ -d "$SRC" ] || { echo "unexpected tar layout"; find "$STAGE/root" -maxdepth 4 | head; exit 1; }
+
+rm -rf "$ASSETS/bootstrap.tar.gz" "$ASSETS/bootstrap.version"
+tar -czf "$ASSETS/bootstrap.tar.gz" -C "$SRC" .
+date -u +"%Y%m%d%H%M%S-seeds-${SEEDS[*]}" | tr ' ' '+' > "$ASSETS/bootstrap.version"
+
+echo
+echo "bootstrap staged:"
+du -sh "$ASSETS/bootstrap.tar.gz"
+find "$SRC/bin" -maxdepth 1 -name "apt*" -o -maxdepth 1 -name "dpkg*" | head

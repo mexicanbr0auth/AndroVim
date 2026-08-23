@@ -3,7 +3,9 @@ package com.androvim
 import android.content.Context
 import android.system.Os
 import android.util.Log
+import com.androvim.pkg.TarReader
 import java.io.File
+import java.io.FileOutputStream
 
 private const val TAG = "AndroVim"
 
@@ -59,7 +61,127 @@ object NvimRuntime {
         ensureUserDirs(context)
         linkTreeSitterParsers(context)
         writeDefaultInit(context)
+        extractBootstrap(context)
         Log.i(TAG, "prepare() concluído")
+    }
+
+    /**
+     * Extract the bundled apt/dpkg bootstrap (assets/bootstrap.tar.gz) into
+     * $PREFIX so a real `apt` works out of the box in the Terminal tab.
+     */
+    private fun extractBootstrap(context: Context) {
+        val version = try {
+            context.assets.open("bootstrap.version").use {
+                it.readBytes().decodeToString().trim()
+            }
+        } catch (_: Exception) {
+            return // no bootstrap bundled; Tools tab still works via PkgManager
+        }
+        val marker = File(context.filesDir, ".bootstrap-extracted")
+        if (marker.exists() && marker.readText().trim() == version) {
+            ensureAptLayout(context)
+            return
+        }
+        Log.i(TAG, "extraindo bootstrap apt/dpkg…")
+        val prefix = prefixDir(context)
+        context.assets.open("bootstrap.tar.gz").use { raw ->
+            java.util.zip.GZIPInputStream(raw).use { gz ->
+                TarReader(gz).use { reader ->
+                    var current = reader.next()
+                    while (current != null) {
+                        val entry = current
+                        when (entry.type) {
+                            TarReader.TYPE_FILE -> {
+                                val rel = normalizePath(entry.name)
+                                if (rel == null) {
+                                    reader.skipData(entry)
+                                } else {
+                                    val f = File(prefix, rel)
+                                    f.parentFile?.mkdirs()
+                                    if (f.exists() || isSymlink(f)) f.delete()
+                                    FileOutputStream(f).use { out ->
+                                        val buf = ByteArray(65536)
+                                        var remaining = entry.size
+                                        while (remaining > 0) {
+                                            val r = reader.raw.read(
+                                                buf, 0, minOf(buf.size.toLong(), remaining).toInt(),
+                                            )
+                                            if (r <= 0) break
+                                            out.write(buf, 0, r)
+                                            remaining -= r
+                                        }
+                                    }
+                                    reader.skipPadding(entry.size)
+                                    Os.chmod(f.absolutePath, 420) // 0644
+                                }
+                            }
+                            TarReader.TYPE_SYMLINK -> {
+                                reader.skipData(entry)
+                                val rel = normalizePath(entry.name) ?: continue
+                                val f = File(prefix, rel)
+                                f.parentFile?.mkdirs()
+                                if (f.exists() || isSymlink(f)) f.delete()
+                                runCatching { Os.symlink(entry.link, f.absolutePath) }
+                            }
+                            TarReader.TYPE_DIR -> {
+                                reader.skipData(entry)
+                                normalizePath(entry.name)?.let { File(prefix, it).mkdirs() }
+                            }
+                            else -> reader.skipData(entry)
+                        }
+                        current = reader.next()
+                    }
+                }
+            }
+        }
+        marker.writeText(version)
+        // binaries must be executable (tar modes are lost through assets)
+        listOf("bin", "libexec").forEach { sub ->
+            val dir = File(prefix, sub)
+            if (dir.isDirectory) dir.walkTopDown().forEach {
+                if (it.isFile) runCatching { Os.chmod(it.absolutePath, 509) } // 0755
+            }
+        }
+        ensureAptLayout(context)
+    }
+
+    private fun isSymlink(f: File): Boolean = try {
+        Os.readlink(f.absolutePath).isNotEmpty()
+    } catch (_: Exception) {
+        false
+    }
+
+    /** Strip "./" and termux prefix paths from tar entries. Null = skip. */
+    fun normalizePath(name: String): String? {
+        var p = name.removePrefix("./")
+        val mark = "data/data/com.termux/files/"
+        if (p.startsWith(mark)) p = p.removePrefix(mark)
+        if (p.startsWith("usr/")) p = p.removePrefix("usr/")
+        if (p.isEmpty() || p.endsWith("/")) return null
+        if (p.contains("..")) return null
+        return p
+    }
+
+    private fun ensureAptLayout(context: Context) {
+        val prefix = prefixDir(context)
+        listOf(
+            "etc/apt/apt.conf.d",
+            "etc/apt/preferences.d",
+            "etc/apt/sources.list.d",
+            "var/lib/dpkg/updates",
+            "var/lib/apt/lists/partial",
+            "var/cache/apt/archives/partial",
+            "var/log/apt",
+            "tmp",
+        ).forEach { File(prefix, it).mkdirs() }
+        val status = File(prefix, "var/lib/dpkg/status")
+        if (!status.exists()) status.writeText("")
+        val sources = File(prefix, "etc/apt/sources.list")
+        val wanted = "deb https://packages.termux.dev/apt/termux-main stable main\n"
+        if (!sources.exists() || sources.readText().isBlank()) {
+            sources.parentFile?.mkdirs()
+            sources.writeText(wanted)
+        }
     }
 
     /** Write the Android clipboard to a file that nvim's clipboard provider can read. */
@@ -90,6 +212,15 @@ object NvimRuntime {
             "projects",
         ).forEach { File(home, it).mkdirs() }
         context.cacheDir.mkdirs()
+        val profile = File(home, ".profile")
+        if (!profile.exists()) {
+            profile.writeText(
+                """
+                export PS1="androvim$ "
+                echo "AndroVim shell — rode 'apt update' para atualizar o repositório"
+                """.trimIndent() + "\n",
+            )
+        }
     }
 
     /**
@@ -157,7 +288,8 @@ object NvimRuntime {
         val prefix = prefixDir(context).absolutePath
         val env = mutableListOf(
             "HOME=${home.absolutePath}",
-            "PATH=$nativeLib:/system/bin:/system/xbin",
+            "PATH=$prefix/bin:$nativeLib:/system/bin:/system/xbin",
+            "ENV=${home.absolutePath}/.profile",
             "TERM=xterm-256color",
             "COLORTERM=truecolor",
             "LANG=C.UTF-8",

@@ -261,6 +261,9 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
         }
         menuButton.setOnClickListener { anchor ->
             val popup = PopupMenu(this@MainActivity, anchor as View)
+            popup.menu.add(getString(R.string.menu_terminal)).setOnMenuItemClickListener {
+                startActivity(Intent(this@MainActivity, TerminalActivity::class.java)); true
+            }
             popup.menu.add(getString(R.string.menu_appearance)).setOnMenuItemClickListener {
                 startActivity(Intent(this@MainActivity, AppearanceActivity::class.java)); true
             }
