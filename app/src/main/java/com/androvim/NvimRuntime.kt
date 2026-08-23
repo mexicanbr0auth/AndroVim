@@ -68,7 +68,7 @@ object NvimRuntime {
 
     /**
      * Extract the bundled apt/dpkg bootstrap (assets/bootstrap.tar.gz) into
-     * $PREFIX so a real `apt` works out of the box in the Terminal tab.
+     * $PREFIX so the embedded tools resolve their data paths.
      */
     private fun extractBootstrap(context: Context) {
         val version = try {
@@ -318,6 +318,11 @@ object NvimRuntime {
             "LUA_CPATH=$nativeLib/?.so;;",
             "PREFIX=$prefix",
             "LD_LIBRARY_PATH=$prefix/lib:$nativeLib",
+            // git probes $PREFIX/etc/gitconfig (compiled-in termux path that we
+            // can't read) — skip the system config entirely and stay noninteractive
+            "GIT_CONFIG_NOSYSTEM=1",
+            "GIT_CONFIG_SYSTEM=/dev/null",
+            "GIT_TERMINAL_PROMPT=0",
             "GIT_EXEC_PATH=$prefix/libexec/git-core",
             "ANDROVIM_PASTE_FILE=${pasteFile(context).absolutePath}",
         )
@@ -390,6 +395,54 @@ object NvimRuntime {
         }
 
         vim.cmd.colorscheme("default")
+
+        -- Language servers embedded in the app (pyright, html/css/json,
+        -- typescript) start automatically for these filetypes.
+        local lsp_cmd = {
+          python = { "pyright-langserver", "--stdio" },
+          html = { "vscode-html-language-server", "--stdio" },
+          css = { "vscode-css-language-server", "--stdio" },
+          scss = { "vscode-css-language-server", "--stdio" },
+          less = { "vscode-css-language-server", "--stdio" },
+          json = { "vscode-json-language-server", "--stdio" },
+          jsonc = { "vscode-json-language-server", "--stdio" },
+          javascript = { "typescript-language-server", "--stdio" },
+          javascriptreact = { "typescript-language-server", "--stdio" },
+          typescript = { "typescript-language-server", "--stdio" },
+          typescriptreact = { "typescript-language-server", "--stdio" },
+        }
+        local grp = vim.api.nvim_create_augroup("AndroVimLsp", { clear = true })
+        vim.api.nvim_create_autocmd("FileType", {
+          group = grp,
+          callback = function(args)
+            local buf = args.buf
+            if vim.bo[buf].buftype ~= "" then return end
+            local cmd = lsp_cmd[args.match]
+            if not cmd or not vim.fn.executable(cmd[1]) then return end
+            local root = vim.fs.root(buf, {
+              ".git", "package.json", "pyproject.toml",
+              "setup.py", "requirements.txt", "tsconfig.json",
+            })
+            vim.lsp.start({
+              name = cmd[1],
+              cmd = cmd,
+              root_dir = root or vim.uv.cwd(),
+            }, { bufnr = buf })
+          end,
+        })
+        vim.api.nvim_create_autocmd("LspAttach", {
+          group = grp,
+          callback = function(ev)
+            local function map(lhs, rhs)
+              vim.keymap.set("n", lhs, rhs, { buffer = ev.buf, silent = true })
+            end
+            map("gd", vim.lsp.buf.definition)
+            map("gr", vim.lsp.buf.references)
+            map("K", vim.lsp.buf.hover)
+            map("<leader>rn", vim.lsp.buf.rename)
+            map("<leader>ca", vim.lsp.buf.code_action)
+          end,
+        })
 
         -- Plugins gerenciados pelo AndroVim (instalados na aba Plugins)
         pcall(require, "androvim")

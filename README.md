@@ -17,8 +17,9 @@ da aplicação e o Neovim inicia imediatamente em um terminal VT100/xterm comple
   `:terminal`, macros, plugins… tudo funciona.
 - **Python 3.14, Node.js 24 LTS e Git embutidos no APK** — prontos na primeira
   abertura, sem instalar nada: `:!python`, `:!node`, `:!git` funcionam de cara.
-- **apt/dpkg reais** + aba **Terminal** — instale qualquer pacote do repo Termux
-  quando quiser (`apt install ripgrep`, etc.), direto no app.
+- **LSPs embutidos e pré-configurados**: Pyright (Python), HTML/CSS/JSON
+  (vscode-langservers) e TypeScript/JS iniciam sozinhos ao abrir esses arquivos —
+  autocomplete, `gd`, `gr`, `K`, `<leader>rn` funcionando de fábrica.
 - **Ferramentas**: instalador visual de pacotes com console ao vivo; itens que já
   vêm embutidos aparecem como `[embutido]`.
 - **Projetos**: abra uma pasta no nvim com dois toques; **Aparência**: temas.
@@ -43,11 +44,8 @@ Baixe o APK mais recente na página de
 (`AndroVim-release.apk`) e instale normalmente (habilitar "fontes desconhecidas").
 Requer Android 7.0 (API 24) ou superior.
 
-- O APK é grande (~120 MB) porque traz Python, Node.js, Git e apt dentro.
+- O APK é grande (~160 MB) porque traz Python, Node.js, Git e os LSPs dentro.
 - A primeira abertura extrai tudo e demora alguns segundos a mais — normal.
-- Internamente o app usa o id `com.termux` (os binários embutidos têm esse
-  caminho compilado; é o mesmo padrão dos forks do Termux). Por isso ele **não
-  pode coexistir com o Termux original** no mesmo aparelho.
 
 ## Como funciona
 

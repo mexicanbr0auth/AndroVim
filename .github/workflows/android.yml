@@ -39,6 +39,11 @@ jobs:
           chmod +x scripts/fetch-bootstrap.sh
           ./scripts/fetch-bootstrap.sh
 
+      - name: Fetch embedded LSP servers (pyright/html/css/json/ts)
+        run: |
+          chmod +x scripts/fetch-lsp.sh
+          ./scripts/fetch-lsp.sh
+
       - name: Source sanity check
         run: |
           echo "=== kotlin sources ==="

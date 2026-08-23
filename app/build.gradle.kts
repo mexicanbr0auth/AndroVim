@@ -8,15 +8,13 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        // MUST stay "com.termux": the bundled apt/dpkg binaries have this prefix
-        // compiled in (/data/data/com.termux/files/usr). Forks of Termux all do this.
-        applicationId = "com.termux"
+        applicationId = "com.androvim"
         minSdk = 24
         // targetSdk < 29 keeps exec() allowed on app-writable storage, which is
         // what lets runtime-installed tools (git, python, node...) run.
         targetSdk = 28
-        versionCode = 14
-        versionName = "0.4.1"
+        versionCode = 15
+        versionName = "0.5.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")

@@ -5,7 +5,6 @@
     <string name="clipboard_empty">Área de transferência vazia</string>
     <string name="session_finished">O Neovim terminou (código %1$d).\n\nToque para reiniciar.</string>
 
-    <string name="menu_terminal">Terminal</string>
     <string name="menu_appearance">Aparência</string>
     <string name="menu_plugins">Plugins Neovim</string>
     <string name="menu_tools">Ferramentas &amp; Linguagens</string>
