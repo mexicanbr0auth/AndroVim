@@ -121,14 +121,17 @@ object NvimRuntime {
 
     private fun copyAssetDir(context: Context, name: String, target: File) {
         val assets = context.assets
-        val entries = assets.list(name) ?: return
-        target.mkdirs()
-        if (entries.isEmpty()) {
+        val entries = assets.list(name)
+        // Non-empty list => directory; empty/null => file. APK zips cannot
+        // contain empty directories, so this distinction is reliable.
+        if (entries.isNullOrEmpty()) {
+            target.parentFile?.mkdirs()
             assets.open(name).use { input ->
                 target.outputStream().use { output -> input.copyTo(output) }
             }
             return
         }
+        target.mkdirs()
         for (entry in entries) {
             copyAssetDir(context, "$name/$entry", File(target, entry))
         }
