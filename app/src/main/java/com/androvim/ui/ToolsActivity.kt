@@ -99,7 +99,7 @@ class ToolsActivity : Activity() {
         Thread {
             var ok = false
             try {
-                PkgManager.install(this@ToolsActivity, listOf(tool.pkgName)) { msg ->
+                PkgManager.install(this@ToolsActivity, listOf(pkgName)) { msg ->
                     postStatus(statusLine, msg)
                 }
                 postStatus(statusLine, "Concluído ✓")
