@@ -1,9 +1,12 @@
 package com.androvim.ui
 
 import android.app.Activity
+import android.graphics.Typeface
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.androvim.data.ToolCatalog
 import com.androvim.pkg.PkgManager
@@ -13,19 +16,81 @@ import java.util.concurrent.atomic.AtomicBoolean
 class ToolsActivity : Activity() {
 
     private lateinit var content: LinearLayout
+    private lateinit var console: TextView
+    private lateinit var consoleScroll: ScrollView
     private val busy = AtomicBoolean(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val (c, _) = Ui.scrollPage(this, getString(com.androvim.R.string.tools_title))
-        content = c
 
-        content.addView(Ui.mutedLabel(
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Ui.BG)
+            setPadding(dp(14, this@ToolsActivity), dp(10, this@ToolsActivity), dp(14, this@ToolsActivity), dp(10, this@ToolsActivity))
+        }
+
+        val title = TextView(this).apply {
+            text = getString(com.androvim.R.string.tools_title)
+            textSize = 18f
+            setTextColor(Ui.FG)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(4, this@ToolsActivity))
+        }
+        root.addView(title)
+
+        root.addView(Ui.mutedLabel(
             this,
             "Pacotes do repositório Termux instalados dentro do AndroVim. " +
                 "Ficam disponíveis no terminal (:!comando) e para os plugins.",
-        ).apply { setPadding(0, 0, 0, dp(10, this@ToolsActivity)) })
+        ).apply { setPadding(0, 0, 0, dp(8, this@ToolsActivity)) })
 
+        val topRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        topRow.addView(Ui.button(this, "\u21bb Atualizar catálogo") {
+            if (!busy.compareAndSet(false, true)) return@button
+            log("atualizando catálogo do repositório…")
+            Thread {
+                val t0 = System.currentTimeMillis()
+                try {
+                    val index = PkgManager.loadIndex(this@ToolsActivity, forceRefresh = true) { msg -> log(msg) }
+                    log("catálogo pronto: ${index.size} pacotes em ${(System.currentTimeMillis() - t0) / 1000.0}s")
+                } catch (e: Exception) {
+                    log("ERRO ao atualizar catálogo: ${e.message}")
+                } finally {
+                    busy.set(false)
+                }
+            }.start()
+        })
+        root.addView(topRow)
+
+        val cardsScroll = ScrollView(this).apply { layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f,
+        ) }
+        content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8, this@ToolsActivity), 0, dp(8, this@ToolsActivity))
+        }
+        cardsScroll.addView(content)
+        root.addView(cardsScroll)
+
+        consoleScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(150, this@ToolsActivity),
+            ).also { it.topMargin = dp(6, this@ToolsActivity) }
+            setBackgroundColor(0xFF0B0E12.toInt())
+            isFillViewport = true
+        }
+        console = TextView(this).apply {
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setTextColor(0xFF9FE29F.toInt())
+            setPadding(dp(8, this@ToolsActivity), dp(8, this@ToolsActivity), dp(8, this@ToolsActivity), dp(8, this@ToolsActivity))
+            textIsSelectable = true
+        }
+        consoleScroll.addView(console)
+        root.addView(consoleScroll)
+
+        setContentView(root)
+        log("gerenciador pronto; toque em Instalar ou ↻ para atualizar o catálogo")
         refresh()
     }
 
@@ -34,8 +99,16 @@ class ToolsActivity : Activity() {
         if (!busy.get()) refresh()
     }
 
+    private fun log(msg: String) = runOnUiThread {
+        console.append("$msg\n")
+        if (console.length() > 24000) {
+            console.text = console.text.substring(console.length() - 16000)
+        }
+        consoleScroll.post { consoleScroll.smoothScrollTo(0, console.height) }
+    }
+
     private fun refresh() {
-        content.removeViews(1, content.childCount - 1)
+        content.removeViews(0, content.childCount)
         for (tool in ToolCatalog.ALL) {
             content.addView(toolCard(tool))
         }
@@ -58,6 +131,8 @@ class ToolsActivity : Activity() {
 
         val installBtn = Ui.button(this, if (installed) "[instalado]" else "Instalar") {
             if (installed || !busy.compareAndSet(false, true)) return@button
+            statusLine.visibility = View.VISIBLE
+            log("== instalando ${tool.pkgName} ==")
             runInstall(tool.pkgName, statusLine) { refresh() }
         }
         btnRow.addView(installBtn)
@@ -67,14 +142,17 @@ class ToolsActivity : Activity() {
                 if (!busy.compareAndSet(false, true)) return@button
                 statusLine.visibility = View.VISIBLE
                 statusLine.text = "Removendo…"
+                log("== removendo ${tool.pkgName} ==")
                 Thread {
                     var ok = false
                     try {
                         PkgManager.uninstall(this@ToolsActivity, tool.pkgName)
                         postStatus(statusLine, "Removido.")
+                        log("${tool.pkgName}: removido")
                         ok = true
                     } catch (e: Exception) {
                         postStatus(statusLine, "Erro: ${e.message}")
+                        log("ERRO removendo ${tool.pkgName}: ${e.message}")
                     } finally {
                         busy.set(false)
                         runOnUiThread { if (ok) refresh() }
@@ -95,20 +173,22 @@ class ToolsActivity : Activity() {
 
     private fun runInstall(pkgName: String, statusLine: TextView, done: () -> Unit) {
         statusLine.visibility = View.VISIBLE
-        statusLine.text = "Baixando…"
+        statusLine.text = "Iniciando…"
         Thread {
             var ok = false
             try {
                 PkgManager.install(this@ToolsActivity, listOf(pkgName)) { msg ->
                     postStatus(statusLine, msg)
+                    log(msg)
                 }
                 postStatus(statusLine, "Concluído ✓")
+                log("$pkgName: instalação concluída ✓")
                 ok = true
             } catch (e: Exception) {
                 postStatus(statusLine, "Erro: ${e.message}")
+                log("ERRO instalando $pkgName: ${e.message}")
             } finally {
                 busy.set(false)
-                // keep the message visible; rebuild cards on next resume/refresh
                 runOnUiThread { if (ok) done() }
             }
         }.start()

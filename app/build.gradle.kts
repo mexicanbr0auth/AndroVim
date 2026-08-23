@@ -13,8 +13,8 @@ android {
         // targetSdk < 29 keeps exec() allowed on app-writable storage, which is
         // what lets runtime-installed tools (git, python, node...) run.
         targetSdk = 28
-        versionCode = 8
-        versionName = "0.2.5"
+        versionCode = 9
+        versionName = "0.2.6"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -73,4 +73,5 @@ dependencies {
     implementation("com.github.termux.termux-app:terminal-emulator:v0.118.3")
     implementation("androidx.drawerlayout:drawerlayout:1.2.0")
     implementation("org.tukaani:xz:1.9")
+    implementation("com.github.luben:zstd-jni:1.5.6-4@aar")
 }

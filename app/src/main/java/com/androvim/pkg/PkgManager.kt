@@ -6,6 +6,7 @@ import android.system.Os
 import org.json.JSONArray
 import org.json.JSONObject
 import org.tukaani.xz.XZInputStream
+import com.github.luben.zstd.ZstdInputStream
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -90,7 +91,7 @@ object PkgManager {
         progress: ((String) -> Unit)? = null,
     ): Map<String, PkgInfo> {
         val f = indexFile(context)
-        val stale = !f.exists() || System.currentTimeMillis() - f.lastModified() > 24 * 3600_000L
+        val stale = !f.exists() || System.currentTimeMillis() - f.lastModified() > 6 * 3600_000L
         if (stale || forceRefresh) {
             progress?.invoke("atualizando catálogo do repositório…")
             val text = httpGet("$REPO/dists/stable/main/binary-${arch()}/Packages")
@@ -339,8 +340,13 @@ object PkgManager {
         val decompressed: InputStream = when {
             raw.size > 6 && raw[0] == 0xFD.toByte() && raw[1] == '7'.code.toByte() &&
                 String(raw, 2, 4) == "zXZ" -> XZInputStream(bis)
+            raw.size > 4 && raw[0] == 0x28.toByte() && raw[1] == 0xB5.toByte() &&
+                raw[2] == 0x2F.toByte() && raw[3] == 0xFD.toByte() -> ZstdInputStream(bis)
             raw.size > 2 && raw[0] == 0x1F.toByte() && raw[1] == 0x8B.toByte() -> GZIPInputStream(bis)
-            else -> throw Exception("compressão de data.tar não suportada (instale via repo atualizado)")
+            else -> throw Exception(
+                "compressão de data.tar não suportada (magic=" +
+                    raw.take(6).joinToString(" ") { "%02x".format(it) } + ")",
+            )
         }
 
         TarReader(decompressed).use { reader ->
