@@ -157,7 +157,7 @@ object NvimRuntime {
         val prefix = prefixDir(context).absolutePath
         val env = mutableListOf(
             "HOME=${home.absolutePath}",
-            "PATH=$prefix/bin:$nativeLib:/system/bin:/system/xbin",
+            "PATH=$nativeLib:/system/bin:/system/xbin",
             "TERM=xterm-256color",
             "COLORTERM=truecolor",
             "LANG=C.UTF-8",
@@ -174,10 +174,19 @@ object NvimRuntime {
             "PREFIX=$prefix",
             "LD_LIBRARY_PATH=$prefix/lib:$nativeLib",
             "GIT_EXEC_PATH=$prefix/libexec/git-core",
-            "NVIM_LOG_FILE=${File(context.filesDir, "nvim.log").absolutePath}",
             "ANDROVIM_PASTE_FILE=${pasteFile(context).absolutePath}",
         )
+        luajitLibPath(context)?.let { env.add("LD_PRELOAD=$it") }
         return env.toTypedArray()
+    }
+
+    /** Preload LuaJIT so nvim's dlopen'ed Lua modules resolve (Termux shim behavior). */
+    private fun luajitLibPath(context: Context): String? {
+        val dir = context.applicationInfo.nativeLibraryDir
+        val match = File(dir).listFiles { _, n ->
+            n.startsWith("libluajit") && n.endsWith(".so")
+        }?.firstOrNull() ?: return null
+        return File(dir, match.name).absolutePath
     }
 
     /** Environment map for spawning helper processes (git clones etc). */
