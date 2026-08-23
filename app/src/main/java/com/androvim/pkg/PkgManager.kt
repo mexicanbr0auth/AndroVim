@@ -6,6 +6,7 @@ import android.system.Os
 import org.json.JSONArray
 import org.json.JSONObject
 import org.tukaani.xz.XZInputStream
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -161,7 +162,7 @@ object PkgManager {
             if (!already.containsKey(info.name)) {
                 already[info.name] = JSONObject()
                     .put("version", info.version)
-                    .put("files", JSONArray(newFiles[info.name] ?: mutableListOf()))
+                    .put("files", JSONArray(newFiles[info.name] ?: mutableListOf<String>()))
             }
         }
         saveRegistry(context, already)
@@ -181,13 +182,16 @@ object PkgManager {
         val entry = reg.remove(name) ?: throw Exception("'$name' não está instalado")
         val prefixPath = prefix(context).absolutePath + "/"
         val dirs = sortedSetOf<String>()
-        for (f in entry.optJSONArray("files") ?: JSONArray()) {
-            val file = File(f.toString())
-            file.delete()
-            var parent = file.parentFile
-            while (parent != null && parent.absolutePath.startsWith(prefixPath)) {
-                dirs.add(parent.absolutePath)
-                parent = parent.parentFile
+        val files = entry.optJSONArray("files")
+        if (files != null) {
+            for (i in 0 until files.length()) {
+                val file = File(files.getString(i))
+                file.delete()
+                var parent = file.parentFile
+                while (parent != null && parent.absolutePath.startsWith(prefixPath)) {
+                    dirs.add(parent.absolutePath)
+                    parent = parent.parentFile
+                }
             }
         }
         // prune now-empty dirs deepest-first
@@ -298,18 +302,20 @@ object PkgManager {
         val decompressed: InputStream = when {
             raw.size > 6 && raw[0] == 0xFD.toByte() && raw[1] == '7'.code.toByte() &&
                 String(raw, 2, 4) == "zXZ" -> XZInputStream(bis)
-            raw.size > 2 && raw[0] == 0x1F && raw[1] == 0x8B.toByte() -> GZIPInputStream(bis)
+            raw.size > 2 && raw[0] == 0x1F.toByte() && raw[1] == 0x8B.toByte() -> GZIPInputStream(bis)
             else -> throw Exception("compressão de data.tar não suportada (instale via repo atualizado)")
         }
 
         TarReader(decompressed).use { reader ->
-            var entry = reader.next()
-            while (entry != null) {
+            var current = reader.next()
+            while (current != null) {
+                val entry = current
                 when (entry.type) {
                     TarReader.TYPE_FILE -> {
                         val rel = normalize(entry.name)
                         if (rel == null) {
                             reader.skipData(entry)
+                            current = reader.next()
                             continue
                         }
                         val f = File(root, rel)
@@ -348,7 +354,7 @@ object PkgManager {
                     }
                     else -> skipData(reader, entry)
                 }
-                entry = reader.next()
+                current = reader.next()
             }
         }
     }

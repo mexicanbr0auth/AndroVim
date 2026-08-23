@@ -29,16 +29,16 @@ class PluginsActivity : Activity() {
             this,
             "Plugins são clonados em ~/.local/share/nvim/site/pack/androvim/start e " +
                 "configurados automaticamente via androvim.lua. Reinicie o nvim após instalar.",
-        ).apply { setPadding(0, 0, 0, dp(10, this)) })
+        ).apply { setPadding(0, 0, 0, dp(10, this@PluginsActivity)) })
 
         gitBanner = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(12, this@PluginsActivity), dp(10, this@PluginsActivity), dp(12, this@PluginsActivity), dp(10, this@PluginsActivity))
             background = Ui.rounded(this@PluginsActivity, 0xFF3A2A20.toInt())
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).also { it.bottomMargin = dp(8) }
+            ).also { it.bottomMargin = dp(8, this@PluginsActivity) }
         }
         content.addView(gitBanner)
         updateGitBanner()
@@ -52,13 +52,13 @@ class PluginsActivity : Activity() {
             setTextColor(Ui.FG)
             setHintTextColor(Ui.MUTED)
             background = Ui.rounded(this@PluginsActivity, 0xFF0D1117.toInt(), 6f)
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setPadding(dp(10, this@PluginsActivity), dp(8, this@PluginsActivity), dp(10, this@PluginsActivity), dp(8, this@PluginsActivity))
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f)
-            (layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, dp(6), 0, dp(6))
+            (layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, dp(6, this@PluginsActivity), 0, dp(6, this@PluginsActivity))
         }
         manualCard.addView(input, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).also { it.setMargins(0, dp(6), 0, dp(6)) })
+        ).also { it.setMargins(0, dp(6, this@PluginsActivity), 0, dp(6, this@PluginsActivity)) })
         val manualStatus = TextView(this).apply {
             setTextColor(Ui.MUTED)
             visibility = View.GONE
@@ -108,7 +108,7 @@ class PluginsActivity : Activity() {
             gitBanner.addView(Ui.button(this, "Instalar o git agora") {
                 startActivity(android.content.Intent(this@PluginsActivity, ToolsActivity::class.java))
             }.also {
-                (it.layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(8)
+                (it.layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(8, this@PluginsActivity)
             })
         }
     }
@@ -141,13 +141,13 @@ class PluginsActivity : Activity() {
         }
         card.addView(headerRow)
         card.addView(Ui.mutedLabel(this, plugin.description).also {
-            it.setPadding(0, dp(2), 0, dp(4))
+            it.setPadding(0, dp(2, this@PluginsActivity), 0, dp(4, this@PluginsActivity))
         })
         if (plugin.dependsOn.isNotEmpty()) {
             card.addView(Ui.mutedLabel(
                 this,
                 "Depende de: ${plugin.dependsOn.joinToString(", ")}",
-            ).apply { setPadding(0, 0, 0, dp(2)) })
+            ).apply { setPadding(0, 0, 0, dp(2, this@PluginsActivity)) })
         }
 
         val statusLine = TextView(this).apply {
@@ -205,7 +205,7 @@ class PluginsActivity : Activity() {
     private fun addToRow(row: LinearLayout, label: String, color: Int, onClick: () -> Unit) {
         val btn = Ui.button(this, label, color, onClick)
         row.addView(btn)
-        (btn.layoutParams as? LinearLayout.LayoutParams)?.leftMargin = dp(6)
+        (btn.layoutParams as? LinearLayout.LayoutParams)?.leftMargin = dp(6, this@PluginsActivity)
     }
 
     private fun showStatus(view: TextView, msg: String, color: Int) = runOnUiThread {

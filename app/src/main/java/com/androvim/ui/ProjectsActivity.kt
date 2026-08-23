@@ -32,7 +32,7 @@ class ProjectsActivity : Activity() {
         content.addView(Ui.mutedLabel(
             this,
             "Abrir um projeto executa :cd para a pasta dele dentro do nvim aberto.",
-        ).apply { setPadding(0, 0, 0, dp(10)) })
+        ).apply { setPadding(0, 0, 0, dp(10, this@ProjectsActivity)) })
 
         refresh()
     }
@@ -54,7 +54,7 @@ class ProjectsActivity : Activity() {
 
         // ---- lista de projetos ----------------------------------------------------
         content.addView(Ui.label(this, "Seus projetos", 15f, bold = true).also {
-            it.setPadding(0, dp(6), 0, dp(8))
+            it.setPadding(0, dp(6, this@ProjectsActivity), 0, dp(8, this@ProjectsActivity))
         })
         val projects = NvimRuntime.projectsDir(this)
             .listFiles { f -> f.isDirectory && !f.name.startsWith(".") }
@@ -77,7 +77,7 @@ class ProjectsActivity : Activity() {
         row.addView(Ui.button(this, "Abrir", Ui.ACCENT) { finishWithCd(dir.absolutePath) })
         val delBtn = Ui.button(this, "Excluir", Ui.DANGER) { confirmDelete(dir) }
         row.addView(delBtn)
-        (delBtn.layoutParams as? LinearLayout.LayoutParams)?.leftMargin = dp(6)
+        (delBtn.layoutParams as? LinearLayout.LayoutParams)?.leftMargin = dp(6, this)
         card.addView(row)
         return card
     }
@@ -226,7 +226,7 @@ class ProjectsActivity : Activity() {
                         android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID))
                     val name = cursor.getString(cursor.getColumnIndexOrThrow(
                         android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME))
-                    val isDir = cursor.getInt(cursor.getColumnIndexOrThrow(
+                    val isDir = cursor.getString(cursor.getColumnIndexOrThrow(
                         android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)) ==
                         android.provider.DocumentsContract.Document.MIME_TYPE_DIR
                     val child = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, id)
@@ -295,8 +295,8 @@ class ProjectsActivity : Activity() {
     // ---- helpers -------------------------------------------------------------------------
 
     private fun addToRow(row: LinearLayout, label: String, onClick: () -> Unit) {
-        val btn = Ui.button(this, label, onClick)
+        val btn = Ui.button(this, label, Ui.FG, onClick)
         row.addView(btn)
-        (btn.layoutParams as? LinearLayout.LayoutParams)?.leftMargin = dp(6)
+        (btn.layoutParams as? LinearLayout.LayoutParams)?.leftMargin = dp(6, this)
     }
 }

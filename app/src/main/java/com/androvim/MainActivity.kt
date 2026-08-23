@@ -248,8 +248,8 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
             setTextColor(0xFFD5DAE0.toInt())
             setTypeface(typeface, Typeface.BOLD)
         })
-        burger.setOnClickListener { drawerLayout.openDrawer(Gravity.START) }
-        headerBar.setOnClickListener { drawerLayout.openDrawer(Gravity.START) }
+        burger.setOnClickListener { _ -> drawerLayout.openDrawer(Gravity.START) }
+        headerBar.setOnClickListener { _ -> drawerLayout.openDrawer(Gravity.START) }
 
         terminalView = TerminalView(this, null).apply {
             layoutParams = LinearLayout.LayoutParams(

@@ -34,7 +34,7 @@ object Ui {
 
     fun label(ctx: Context, text: String, size: Float = 15f, bold: Boolean = false): TextView =
         TextView(ctx).apply {
-            text = text
+            setText(text)
             setTextColor(FG)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
             typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
@@ -42,7 +42,7 @@ object Ui {
 
     fun mutedLabel(ctx: Context, text: String, size: Float = 12f): TextView =
         TextView(ctx).apply {
-            text = text
+            setText(text)
             setTextColor(MUTED)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
         }
@@ -61,7 +61,7 @@ object Ui {
         gravity = Gravity.CENTER
         minWidth = dp(56, ctx)
         minHeight = dp(34, ctx)
-        setPadding(dp(14), dp(6), dp(14), dp(6))
+        setPadding(dp(14, ctx), dp(6, ctx), dp(14, ctx), dp(6, ctx))
         background = rounded(ctx, 0xFF1F2933.toInt(), 8f)
         setOnClickListener { onClick() }
     }
