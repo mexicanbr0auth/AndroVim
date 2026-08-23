@@ -9,7 +9,6 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
-import android.view.InputMethod
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -192,7 +191,7 @@ class MainActivity : Activity(), TerminalSessionClient, TerminalViewClient {
     override fun onSingleTapUp(e: MotionEvent?) {
         terminalView.requestFocus()
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.showSoftInput(terminalView, InputMethod.SHOW_IMPLICIT)
+        imm.showSoftInput(terminalView, InputMethodManager.SHOW_IMPLICIT)
     }
 
     override fun shouldBackButtonBeMappedToEscape(): Boolean = false
